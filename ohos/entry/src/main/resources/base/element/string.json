@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "LOVE2D Host"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "LOVE2D Entry Ability"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "LÖVE"
+    }
+  ]
+}
