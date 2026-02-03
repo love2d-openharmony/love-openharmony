@@ -1,0 +1,24 @@
+{
+  "app": {
+    "bundleName": "com.bytemain.love2d.ohos",
+    "vendor": "bytemain",
+    "versionCode": 1000049,
+    "versionName": "1.0.0",
+    "icon": "$media:layered_image",
+    "label": "$string:app_name",
+    "appEnvironments": [
+      {
+        "name": "NEED_OPENGL",
+        "value": "1"
+      },
+      {
+        "name": "ALSOFT_DRIVERS",
+        "value": "opensl"
+      },
+      {
+        "name": "ALSOFT_LOGLEVEL",
+        "value": "3"
+      }
+    ]
+  }
+}
