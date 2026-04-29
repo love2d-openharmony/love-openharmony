@@ -10,7 +10,7 @@ import { batteryInfo } from '@kit.BasicServicesKit';
 import fs from '@ohos.file.fs'
 import { display } from '@kit.ArkUI';
 
-import  { picker } from '@kit.CoreFileKit';
+import  { picker, fileShare } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 
 const DOMAIN = 0x0000;
@@ -24,6 +24,7 @@ let surfaceReady = false
 let callbackReady = false
 let launchRequested = false
 let mainLaunched = false
+let mainArgs: string[] = []
 
 function launchMainIfReady(reason: string) {
   if (mainLaunched) {
@@ -38,7 +39,7 @@ function launchMainIfReady(reason: string) {
   } catch (e) {
   }
   hilog.info(DOMAIN, 'testTag', '%{public}s', `launchMainIfReady reason=${reason}`)
-  sdltest.sdlLaunchMain("libentry.so", "main")
+  sdltest.sdlLaunchMain("liblove.so", "SDL_main", mainArgs)
 }
 
 export class ArkNapiCallback {
@@ -234,17 +235,176 @@ function copyToClipboard(text: string): void {
   });
 }
 
+function normalizePickedPath(uri: string): string {
+  if (uri.startsWith('file://docs')) {
+    return uri.replace('file://docs', '')
+  }
+  if (uri.startsWith('file://')) {
+    return uri.substring('file://'.length)
+  }
+  return uri
+}
+
+class StoredLaunchTarget {
+  mode: string = ''
+  uri: string = ''
+}
+
+function getStoredLaunchTargetPath(): string {
+  const con = context.getHostContext() as common.UIAbilityContext
+  return con.filesDir + '/launcher-game.json'
+}
+
+function loadStoredLaunchTarget(): StoredLaunchTarget | null {
+  try {
+    const statePath = getStoredLaunchTargetPath()
+    const options = new ReadTextOptions()
+    options.length = fs.statSync(statePath).size
+    const text = fs.readTextSync(statePath, options)
+    const parsed = JSON.parse(text) as StoredLaunchTarget
+    return parsed
+  } catch (_e) {
+    return null
+  }
+}
+
+function saveStoredLaunchTarget(target: StoredLaunchTarget): void {
+  const statePath = getStoredLaunchTargetPath()
+  const file = fs.openSync(statePath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC)
+  fs.writeSync(file.fd, JSON.stringify(target))
+  fs.closeSync(file.fd)
+}
+
+function clearStoredLaunchTarget(): void {
+  try {
+    fs.unlinkSync(getStoredLaunchTargetPath())
+  } catch (_e) {
+  }
+}
+
+async function persistLaunchPermission(uri: string): Promise<void> {
+  const policies: Array<fileShare.PolicyInfo> = [{
+    uri: uri,
+    operationMode: fileShare.OperationMode.READ_MODE,
+  }]
+  await fileShare.persistPermission(policies)
+}
+
+async function activateLaunchPermission(uri: string): Promise<void> {
+  const policies: Array<fileShare.PolicyInfo> = [{
+    uri: uri,
+    operationMode: fileShare.OperationMode.READ_MODE,
+  }]
+  await fileShare.activatePermission(policies)
+}
+
 @Entry
 @Component
 struct Index {
   @State floatX: number = 18
   @State floatY: number = 100
   @State floatOpen: boolean = false
+  @State bundledGameExists: boolean = false
+  @State bundledGameSize: number = 0
+  @State launcherVisible: boolean = true
+  @State selectedGamePath: string = ''
+  @State selectedGameUri: string = ''
+  @State storedGameUri: string = ''
+  @State launchHint: string = '请选择要启动的游戏'
+
+  private buildMainArgs(gamePath?: string): string[] {
+    const args = ['--renderers', 'opengl,vulkan']
+    if (gamePath && gamePath.length > 0) {
+      args.push(gamePath)
+    }
+    return args
+  }
+
+  private startSelectedGame(gamePath: string, useBundledGame: boolean): void {
+    const con = context.getHostContext() as common.UIAbilityContext
+    entry.setPaths(con.filesDir, useBundledGame ? con.resourceDir : '', useBundledGame)
+    mainArgs = this.buildMainArgs(gamePath)
+    this.selectedGamePath = gamePath
+    this.selectedGameUri = useBundledGame ? '' : this.selectedGameUri
+    this.launcherVisible = false
+    this.launchHint = useBundledGame ? '启动内置 game.love' : (gamePath.length > 0 ? `启动 ${gamePath}` : '启动 LÖVE nogame')
+    launchRequested = true
+    launchMainIfReady(useBundledGame ? 'bundled_game' : (gamePath.length > 0 ? 'external_game' : 'nogame'))
+  }
+
+  private launchBundledGame(): void {
+    const con = context.getHostContext() as common.UIAbilityContext
+    this.startSelectedGame(con.resourceDir, true)
+  }
+
+  private async chooseStartupGame(selectFolder: boolean): Promise<void> {
+    const options = new picker.DocumentSelectOptions()
+    options.maxSelectNumber = 1
+    options.selectMode = selectFolder ? picker.DocumentSelectMode.FOLDER : picker.DocumentSelectMode.FILE
+    options.authMode = false
+    options.mergeMode = picker.MergeTypeMode.DEFAULT
+    options.isEncryptionSupported = false
+    if (!selectFolder) {
+      options.fileSuffixFilters = ['LOVE|.love']
+    }
+
+    try {
+      const con = context.getHostContext() as common.UIAbilityContext
+      const documentViewPicker = new picker.DocumentViewPicker(con)
+      const result: Array<string> = await documentViewPicker.select(options)
+      if (result.length === 0) {
+        return
+      }
+      const targetUri = result[0]
+      const targetPath = normalizePickedPath(targetUri)
+      this.selectedGameUri = targetUri
+      this.storedGameUri = targetUri
+      try {
+        await persistLaunchPermission(targetUri)
+        saveStoredLaunchTarget({ mode: selectFolder ? 'folder' : 'love', uri: targetUri })
+        this.launchHint = `已保存外置授权: ${targetPath}`
+      } catch (persistErr) {
+        clearStoredLaunchTarget()
+        const message = (persistErr as BusinessError).message ?? `${persistErr}`
+        this.launchHint = `已临时授权，本次可启动，未持久化: ${message}`
+      }
+      this.startSelectedGame(targetPath, false)
+    } catch (err) {
+      const message = (err as BusinessError).message ?? `${err}`
+      this.launchHint = `选择失败: ${message}`
+    }
+  }
+
+  private async launchStoredExternalGame(): Promise<void> {
+    if (this.storedGameUri.length === 0) {
+      return
+    }
+    try {
+      await activateLaunchPermission(this.storedGameUri)
+      this.selectedGameUri = this.storedGameUri
+      this.startSelectedGame(normalizePickedPath(this.storedGameUri), false)
+    } catch (err) {
+      const message = (err as BusinessError).message ?? `${err}`
+      this.launchHint = `激活已保存授权失败: ${message}`
+    }
+  }
+
+  private launchNoGame(): void {
+    this.startSelectedGame('', false)
+  }
 
   async aboutToAppear(): Promise<void> {
     context = this.getUIContext()
     const con = context.getHostContext() as common.UIAbilityContext
-    entry.setPaths(con.filesDir, con.resourceDir)
+    entry.setPaths(con.filesDir, con.resourceDir, false)
+    mainArgs = this.buildMainArgs()
+    const storedTarget = loadStoredLaunchTarget()
+    if (storedTarget && storedTarget.uri.length > 0) {
+      this.storedGameUri = storedTarget.uri
+      this.selectedGameUri = storedTarget.uri
+      this.selectedGamePath = normalizePickedPath(storedTarget.uri)
+      this.launchHint = `已检测到上次外置游戏: ${this.selectedGamePath}`
+    }
     const resGame = con.resourceDir + '/game.love'
     const logPath = con.filesDir + '/love.log'
     try {
@@ -256,6 +416,8 @@ struct Index {
         resSize = fs.statSync(resGame).size
       } catch (e) {
       }
+      this.bundledGameExists = resExists
+      this.bundledGameSize = resSize
       let logExists = false
       let logSize = 0
       try {
@@ -287,11 +449,6 @@ struct Index {
     } catch (e) {
     }
     callbackReady = true
-    launchRequested = true
-    launchMainIfReady('after_callback_init')
-    setTimeout(() => {
-      launchMainIfReady('timeout_fallback')
-    }, 1500)
     focusControl.requestFocus('mainView')
     await controller.attach(false, {
       inputAttribute: {
@@ -332,6 +489,59 @@ struct Index {
           surfaceReady = true
           launchMainIfReady('surface_onLoad')
         })
+      if (this.launcherVisible && !mainLaunched) {
+        Column({ space: 12 }) {
+          Text('选择启动内容')
+            .fontSize(22)
+            .fontColor(Color.White)
+            .fontWeight(FontWeight.Medium)
+          Text(this.bundledGameExists ? `已检测到内置 game.love (${this.bundledGameSize} bytes)` : '未检测到内置 game.love')
+            .fontSize(13)
+            .fontColor('#D0D0D0')
+          if (this.selectedGamePath.length > 0) {
+            Text(this.selectedGamePath)
+              .fontSize(12)
+              .fontColor('#B0B0B0')
+              .maxLines(2)
+          }
+          Text(this.launchHint)
+            .fontSize(12)
+            .fontColor('#B0B0B0')
+          if (this.bundledGameExists) {
+            Button('启动内置 game.love')
+              .width('100%')
+              .onClick(() => {
+                this.launchBundledGame()
+              })
+          }
+          if (this.storedGameUri.length > 0) {
+            Button('启动上次外置游戏')
+              .width('100%')
+              .onClick(() => {
+                void this.launchStoredExternalGame()
+              })
+          }
+          Button('选择 .love 文件')
+            .width('100%')
+            .onClick(() => {
+              void this.chooseStartupGame(false)
+            })
+          Button('选择游戏目录')
+            .width('100%')
+            .onClick(() => {
+              void this.chooseStartupGame(true)
+            })
+          Button('启动 LÖVE 默认 nogame')
+            .width('100%')
+            .onClick(() => {
+              this.launchNoGame()
+            })
+        }
+        .width('84%')
+        .padding(20)
+        .borderRadius(18)
+        .backgroundColor('#CC111111')
+      }
       Column() {
         if (this.floatOpen) {
           Button('复制日志')

@@ -22,8 +22,6 @@ namespace love::ohos
 	void setGameResourcePath(const char *path);
 } // namespace love::ohos
 
-extern "C" int love_run(int argc, char **argv);
-
 namespace
 {
 	std::string g_sandbox_path;
@@ -33,15 +31,6 @@ namespace
 	static bool FileExists(const std::string &path)
 	{
 		std::ifstream f(path, std::ios::in | std::ios::binary);
-		return f.good();
-	}
-
-	static bool WriteFile(const std::string &path, const std::string &data)
-	{
-		std::ofstream f(path, std::ios::out | std::ios::binary | std::ios::trunc);
-		if (!f.good())
-			return false;
-		f.write(data.data(), static_cast<std::streamsize>(data.size()));
 		return f.good();
 	}
 
@@ -65,94 +54,6 @@ namespace
 		std::fflush(f);
 	}
 
-	extern "C" int main()
-	{
-		love::ohos::setSandboxPath(g_sandbox_path.c_str());
-
-		if (!g_sandbox_path.empty())
-		{
-			EnsureDir(g_sandbox_path);
-			const std::string logpath = g_sandbox_path + "/love.log";
-			g_log = std::fopen(logpath.c_str(), "w");
-			if (g_log)
-			{
-				dup2(fileno(g_log), fileno(stdout));
-				dup2(fileno(g_log), fileno(stderr));
-				setvbuf(stdout, nullptr, _IONBF, 0);
-				setvbuf(stderr, nullptr, _IONBF, 0);
-				SDL_SetLogOutputFunction(SDLLogToFile, g_log);
-				SDL_SetLogPriorities(SDL_LOG_PRIORITY_VERBOSE);
-			}
-			else
-			{
-				SDL_Log("fopen(%s) failed errno=%d", logpath.c_str(), errno);
-			}
-		}
-
-		SDL_SetHint(SDL_HINT_EGL_LIBRARY, "libEGL.so");
-		SDL_SetHint(SDL_HINT_OPENGL_LIBRARY, "libGLESv2.so");
-		SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "libGLESv2.so");
-		SDL_SetHint("LOVE_GRAPHICS_USE_OPENGLES", "1");
-		SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
-		SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
-
-		using OH_Graphics_QueryGL_FUNC = EGLBoolean (*)(void);
-		OH_Graphics_QueryGL_FUNC querygl =
-			(OH_Graphics_QueryGL_FUNC)eglGetProcAddress("OH_Graphics_QueryGL");
-
-		if (querygl != nullptr)
-		{
-			EGLBoolean useGL = querygl();
-			SDL_Log("OH_Graphics_QueryGL exists, return=%d", (int)useGL);
-
-			if (useGL)
-			{
-				SDL_SetHint("LOVE_GRAPHICS_USE_OPENGLES", "0");
-				SDL_SetHint("LOVE_GRAPHICS_USE_GL3", "1");
-			}
-		}
-		else
-		{
-			SDL_Log("OH_Graphics_QueryGL missing, fallback to GLES");
-		}
-
-		SDL_Log("SDL_HINT_OPENGL_LIBRARY=%s", SDL_GetHint(SDL_HINT_OPENGL_LIBRARY));
-		SDL_Log("SDL_HINT_OPENGL_ES_DRIVER=%s", SDL_GetHint(SDL_HINT_OPENGL_ES_DRIVER));
-		SDL_Log("LOVE_GRAPHICS_USE_OPENGLES=%s", SDL_GetHint("LOVE_GRAPHICS_USE_OPENGLES"));
-
-		std::string resourceDir = g_game_resource_path;
-		if (resourceDir.empty() && !g_sandbox_path.empty())
-		{
-			const std::string candidate = g_sandbox_path + "/game.love";
-			if (FileExists(candidate))
-				resourceDir = g_sandbox_path;
-		}
-		love::ohos::setGameResourcePath(resourceDir.c_str());
-		SDL_Log("sandbox=%s", g_sandbox_path.c_str());
-		SDL_Log("resourceDir=%s", resourceDir.c_str());
-		if (!resourceDir.empty())
-		{
-			SDL_Log("resourceDir/game.love exists=%d", FileExists(resourceDir + "/game.love") ? 1 : 0);
-		}
-
-		std::vector<char *> argv;
-		argv.push_back(const_cast<char *>("love"));
-		argv.push_back(const_cast<char *>("--renderers"));
-		argv.push_back(const_cast<char *>("opengl,vulkan"));
-		if (!resourceDir.empty())
-			argv.push_back(const_cast<char *>(resourceDir.c_str()));
-		argv.push_back(nullptr);
-
-		int rc = love_run(static_cast<int>(argv.size() - 1), argv.data());
-		SDL_Log("love_run rc=%d", rc);
-		if (g_log)
-		{
-			std::fclose(g_log);
-			g_log = nullptr;
-		}
-		return rc;
-	}
-
 	napi_value Start(napi_env env, napi_callback_info /*info*/)
 	{
 		napi_value result = nullptr;
@@ -162,8 +63,8 @@ namespace
 
 	napi_value SetPaths(napi_env env, napi_callback_info info)
 	{
-		size_t argc = 2;
-		napi_value argv[2] = {nullptr, nullptr};
+		size_t argc = 3;
+		napi_value argv[3] = {nullptr, nullptr, nullptr};
 		napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
 
 		auto readString = [&](napi_value v) -> std::string
@@ -184,6 +85,73 @@ namespace
 			g_sandbox_path = readString(argv[0]);
 		if (argc >= 2 && argv[1])
 			g_game_resource_path = readString(argv[1]);
+		bool enableBundledGame = true;
+		if (argc >= 3 && argv[2])
+		{
+			bool value = true;
+			if (napi_get_value_bool(env, argv[2], &value) == napi_ok)
+				enableBundledGame = value;
+		}
+
+		love::ohos::setSandboxPath(g_sandbox_path.c_str());
+
+		std::string resourceDir = enableBundledGame ? g_game_resource_path : "";
+		if (enableBundledGame && resourceDir.empty() && !g_sandbox_path.empty())
+		{
+			const std::string candidate = g_sandbox_path + "/game.love";
+			if (FileExists(candidate))
+				resourceDir = g_sandbox_path;
+		}
+		love::ohos::setGameResourcePath(resourceDir.c_str());
+
+		if (g_log)
+		{
+			std::fclose(g_log);
+			g_log = nullptr;
+		}
+
+		if (!g_sandbox_path.empty())
+		{
+			EnsureDir(g_sandbox_path);
+			const std::string logpath = g_sandbox_path + "/love.log";
+			g_log = std::fopen(logpath.c_str(), "w");
+			if (g_log)
+			{
+				dup2(fileno(g_log), fileno(stdout));
+				dup2(fileno(g_log), fileno(stderr));
+				setvbuf(stdout, nullptr, _IONBF, 0);
+				setvbuf(stderr, nullptr, _IONBF, 0);
+				SDL_SetLogOutputFunction(SDLLogToFile, g_log);
+				SDL_SetLogPriorities(SDL_LOG_PRIORITY_VERBOSE);
+			}
+		}
+
+		SDL_SetHint(SDL_HINT_EGL_LIBRARY, "libEGL.so");
+		SDL_SetHint(SDL_HINT_OPENGL_LIBRARY, "libGLESv2.so");
+		SDL_SetHint(SDL_HINT_OPENGL_ES_DRIVER, "libGLESv2.so");
+		SDL_SetHint("LOVE_GRAPHICS_USE_OPENGLES", "1");
+		SDL_SetHint("LOVE_GRAPHICS_USE_GL3", "0");
+		SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
+		SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
+
+		using OH_Graphics_QueryGL_FUNC = EGLBoolean (*)(void);
+		OH_Graphics_QueryGL_FUNC querygl =
+			(OH_Graphics_QueryGL_FUNC)eglGetProcAddress("OH_Graphics_QueryGL");
+
+		if (querygl != nullptr && querygl())
+		{
+			SDL_SetHint("LOVE_GRAPHICS_USE_OPENGLES", "0");
+			SDL_SetHint("LOVE_GRAPHICS_USE_GL3", "1");
+		}
+
+		SDL_Log("sandbox=%s", g_sandbox_path.c_str());
+		SDL_Log("resourceDir=%s", resourceDir.c_str());
+		SDL_Log("bundledGameEnabled=%d", enableBundledGame ? 1 : 0);
+		SDL_Log("resourceDir/game.love exists=%d", (!resourceDir.empty() && FileExists(resourceDir + "/game.love")) ? 1 : 0);
+		SDL_Log("SDL_HINT_OPENGL_LIBRARY=%s", SDL_GetHint(SDL_HINT_OPENGL_LIBRARY));
+		SDL_Log("SDL_HINT_OPENGL_ES_DRIVER=%s", SDL_GetHint(SDL_HINT_OPENGL_ES_DRIVER));
+		SDL_Log("LOVE_GRAPHICS_USE_OPENGLES=%s", SDL_GetHint("LOVE_GRAPHICS_USE_OPENGLES"));
+		SDL_Log("LOVE_GRAPHICS_USE_GL3=%s", SDL_GetHint("LOVE_GRAPHICS_USE_GL3"));
 
 		napi_value result = nullptr;
 		napi_create_int32(env, 0, &result);

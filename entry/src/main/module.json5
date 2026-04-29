@@ -28,6 +28,9 @@
       },
       {
         "name": "ohos.permission.GYROSCOPE"
+      },
+      {
+        "name": "ohos.permission.FILE_ACCESS_PERSIST"
       }
     ],
     
@@ -43,7 +46,7 @@
         "label": "$string:EntryAbility_label",
         "startWindowIcon": "$media:startIcon",
         "startWindowBackground": "$color:start_window_background",
-        "orientation": "landscape",
+        "orientation": "auto_rotation_restricted",
         "exported": true,
         "supportWindowMode": ["floating", "fullscreen", "split"],
         "skills": [
