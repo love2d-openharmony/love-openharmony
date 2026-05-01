@@ -20,7 +20,14 @@ namespace love::ohos
 {
 	void setSandboxPath(const char *path);
 	void setGameResourcePath(const char *path);
+	void setSystemCallbacks(void (*vibrate)(double), bool (*hasBackgroundMusic)());
 } // namespace love::ohos
+
+extern "C"
+{
+	void OHOS_Vibrate(double seconds);
+	bool OHOS_HasBackgroundMusic();
+}
 
 namespace
 {
@@ -94,6 +101,7 @@ namespace
 		}
 
 		love::ohos::setSandboxPath(g_sandbox_path.c_str());
+		love::ohos::setSystemCallbacks(OHOS_Vibrate, OHOS_HasBackgroundMusic);
 
 		std::string resourceDir = enableBundledGame ? g_game_resource_path : "";
 		if (enableBundledGame && resourceDir.empty() && !g_sandbox_path.empty())
