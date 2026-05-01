@@ -13,7 +13,7 @@ set(LOVE_ROOT "${SHARED_CPP_ROOT}/love")
 
 set(OHOS ON)
 
-set(LOVE_JIT OFF CACHE BOOL "" FORCE)
+set(LOVE_JIT ON CACHE BOOL "" FORCE)
 set(MEGA_LOVE "${LOVE_ROOT}")
 add_subdirectory("${MEGASOURCE_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/megasource")
 

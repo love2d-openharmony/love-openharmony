@@ -11,7 +11,11 @@ import bundleManager from '@ohos.bundle.bundleManager';
 
 const DOMAIN = 0x0000;
 
-const permissions: Array<Permissions> = ['ohos.permission.INPUT_KEYBOARD_CONTROLLER', 'ohos.permission.READ_PASTEBOARD'];
+const permissions: Array<Permissions> = [
+  'ohos.permission.INPUT_KEYBOARD_CONTROLLER',
+  'ohos.permission.READ_PASTEBOARD',
+  'ohos.permission.FILE_ACCESS_PERSIST',
+];
 function reqPermissionsFromUser(permissions: Array<Permissions>, context: common.UIAbilityContext): void {
   let atManager: abilityAccessCtrl.AtManager = abilityAccessCtrl.createAtManager();
   atManager.requestPermissionsFromUser(context, permissions).then((data) => {
