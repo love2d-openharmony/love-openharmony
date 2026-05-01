@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import entry from 'libentry.so';
-import sdltest from 'libSDL3.so';
+import sdlBridge from 'libSDL3.so';
 import { intl } from '@kit.LocalizationKit';
 import { promptAction, ShowDialogSuccessResponse, window } from '@kit.ArkUI';
 import { inputMethod } from '@kit.IMEKit'
@@ -16,6 +16,7 @@ import  { picker, fileShare } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 
 const DOMAIN = 0x0000;
+const LOG_TAG = 'LoveOHOS';
 
 let controller = inputMethod.getController()
 let input = false
@@ -41,8 +42,8 @@ function launchMainIfReady(reason: string) {
     debugInfo = (debugInfo + `\n[Ark] launchMainIfReady reason=${reason}\n`).slice(-12000)
   } catch (e) {
   }
-  hilog.info(DOMAIN, 'testTag', '%{public}s', `launchMainIfReady reason=${reason}`)
-  sdltest.sdlLaunchMain("liblove.so", "SDL_main", mainArgs)
+  hilog.info(DOMAIN, LOG_TAG, '%{public}s', `launchMainIfReady reason=${reason}`)
+  sdlBridge.sdlLaunchMain("liblove.so", "SDL_main", mainArgs)
 }
 
 export class ArkNapiCallback {
@@ -67,7 +68,7 @@ export class ArkNapiCallback {
         debugInfo = (debugInfo + `[Ark] auto-ack SDL compatibility warning\n`).slice(-12000)
       } catch (e) {
       }
-      sdltest.sdlSendDialogStatus(indexMapping.length > 0 ? indexMapping[0] : 0)
+      sdlBridge.sdlSendDialogStatus(indexMapping.length > 0 ? indexMapping[0] : 0)
       return
     }
 
@@ -81,23 +82,23 @@ export class ArkNapiCallback {
         debugInfo = (debugInfo + `[Ark] dialog selected index=${a.index}\n`).slice(-12000)
       } catch (e) {
       }
-      sdltest.sdlSendDialogStatus(indexMapping[a.index])
+      sdlBridge.sdlSendDialogStatus(indexMapping[a.index])
     }).catch((err: BusinessError) => {
       try {
         debugInfo = (debugInfo + `[Ark] dialog failed: ${err.message ?? err}\n`).slice(-12000)
       } catch (e) {
       }
-      sdltest.sdlSendDialogStatus(indexMapping[0])
+      sdlBridge.sdlSendDialogStatus(indexMapping[0])
     })
   }
   fetchLocale(): string {
     let locale = new intl.Locale()
     return locale.language + "_" + locale.region
   }
-  test(): number {
-    hilog.info(DOMAIN, 'testTag', 'Call from native !!!')
+  onBridgeReady(): number {
+    hilog.info(DOMAIN, LOG_TAG, 'SDL bridge callback ready')
     try {
-      debugInfo = (debugInfo + `\n[Ark] test called\n`).slice(-12000)
+      debugInfo = (debugInfo + `\n[Ark] bridge ready\n`).slice(-12000)
     } catch (e) {
     }
     return 1
@@ -149,11 +150,11 @@ export class ArkNapiCallback {
     let systemPasteboard: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
     systemPasteboard.setData(pasteData, (err, data) => {
       if (err) {
-        hilog.error(DOMAIN, 'testTag', 'Failed to set PasteData. Cause: ' + err.message);
+        hilog.error(DOMAIN, LOG_TAG, 'Failed to set PasteData. Cause: ' + err.message);
         return;
       }
 
-      hilog.info(DOMAIN, 'testTag', 'Succeed in setting PasteData.');
+      hilog.info(DOMAIN, LOG_TAG, 'Succeed in setting PasteData.');
     });
   }
 
@@ -164,12 +165,12 @@ export class ArkNapiCallback {
   startTextInput() {
     input = true
     controller.showTextInput()
-    hilog.info(DOMAIN, 'testTag', 'text input start')
+    hilog.info(DOMAIN, LOG_TAG, 'text input start')
   }
   stopTextInput() {
     input = false
     controller.hideTextInput()
-    hilog.info(DOMAIN, 'testTag', 'text input stop')
+    hilog.info(DOMAIN, LOG_TAG, 'text input stop')
     targetText = ""
   }
 
@@ -221,14 +222,14 @@ export class ArkNapiCallback {
     const documentViewPicker = new picker.DocumentViewPicker(contextt);
     documentViewPicker.select(documentSelectOptions).then((documentSelectResult: Array<string>) => {
       uris = documentSelectResult;
-      sdltest.sdlDialogClearSelection()
+      sdlBridge.sdlDialogClearSelection()
       for (let idx = 0; idx < uris.length; idx++)
       {
         let target = uris[idx].replace("file://docs", "")
-        sdltest.sdlDialogFileSelected(target)
+        sdlBridge.sdlDialogFileSelected(target)
         console.info('documentViewPicker.select to file succeed and uris are: ' + target);
       }
-      sdltest.sdlDialogExecCallback()
+      sdlBridge.sdlDialogExecCallback()
     }).catch((err: BusinessError) => {
       console.error(`Invoke documentViewPicker.select failed, code is ${err.code}, message is ${err.message}`);
     })
@@ -348,6 +349,28 @@ function fileExistsWithData(path: string): boolean {
   return getFileSize(path) > 0
 }
 
+function formatBytes(size: number): string {
+  if (size >= 1024 * 1024) {
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`
+  }
+  if (size >= 1024) {
+    return `${(size / 1024).toFixed(1)} KB`
+  }
+  return `${size} B`
+}
+
+function getDisplayName(path: string): string {
+  if (path.length === 0) {
+    return ''
+  }
+  const normalized = path.replace(/\\/g, '/')
+  const idx = normalized.lastIndexOf('/')
+  if (idx >= 0 && idx < normalized.length - 1) {
+    return normalized.substring(idx + 1)
+  }
+  return normalized
+}
+
 function copyPickedFileToSandbox(uri: string, destPath: string): number {
   const source = fs.openSync(uri, fs.OpenMode.READ_ONLY)
   try {
@@ -396,6 +419,8 @@ struct Index {
   @State selectedGameUri: string = ''
   @State storedGameUri: string = ''
   @State launchHint: string = '请选择要启动的游戏'
+  @State settingsOpen: boolean = false
+  @State debugToolsEnabled: boolean = false
 
   private buildMainArgs(gamePath?: string): string[] {
     const args = ['--renderers', 'opengl,vulkan']
@@ -511,6 +536,291 @@ struct Index {
     this.startSelectedGame('', false)
   }
 
+  private closeApp(): void {
+    const con = context.getHostContext() as common.UIAbilityContext
+    con.terminateSelf().catch((err: BusinessError) => {
+      try {
+        debugInfo = (debugInfo + `\n[Ark] terminateSelf failed: ${err.message ?? err}\n`).slice(-12000)
+      } catch (_e) {
+      }
+    })
+  }
+
+  private handleBack(): boolean {
+    if (this.settingsOpen) {
+      this.settingsOpen = false
+      return true
+    }
+
+    this.closeApp()
+    return true
+  }
+
+  onBackPress(): boolean {
+    return this.handleBack()
+  }
+
+  @Builder
+  private GameCover(title: string, label: string, footer: string, enabled: boolean, accent: string, onClick: () => void) {
+    Column({ space: 8 }) {
+      Column() {
+        Text(label)
+          .fontSize(10)
+          .fontColor('#101418')
+          .fontWeight(FontWeight.Bold)
+          .height(22)
+          .width('100%')
+          .textAlign(TextAlign.Center)
+          .backgroundColor(enabled ? accent : '#555B61')
+        Blank()
+        Text(title)
+          .fontSize(19)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(enabled ? Color.White : '#83888D')
+          .textAlign(TextAlign.Center)
+          .maxLines(2)
+          .width('100%')
+        Blank()
+        Text(enabled ? 'PLAY' : 'EMPTY')
+          .fontSize(10)
+          .fontColor(enabled ? '#C9D7E2' : '#6C7074')
+          .textAlign(TextAlign.Center)
+          .width('100%')
+          .margin({ bottom: 10 })
+      }
+      .width('100%')
+      .height(168)
+      .borderRadius(6)
+      .backgroundColor(enabled ? '#20262D' : '#171B20')
+      .border({ width: 1, color: enabled ? '#53616D' : '#30363C' })
+      .onClick(() => {
+        if (enabled) {
+          onClick()
+        }
+      })
+
+      Text(footer)
+        .fontSize(12)
+        .fontColor(enabled ? '#E6EDF3' : '#7E858B')
+        .fontWeight(FontWeight.Medium)
+        .textAlign(TextAlign.Center)
+        .maxLines(1)
+        .width('100%')
+    }
+    .width('100%')
+  }
+
+  @Builder
+  private AddCover(title: string, footer: string, accent: string, onClick: () => void) {
+    Column({ space: 8 }) {
+      Column() {
+        Text('ADD')
+          .fontSize(10)
+          .fontColor('#101418')
+          .fontWeight(FontWeight.Bold)
+          .height(22)
+          .width('100%')
+          .textAlign(TextAlign.Center)
+          .backgroundColor(accent)
+        Blank()
+        Text('+')
+          .fontSize(42)
+          .fontColor(Color.White)
+          .textAlign(TextAlign.Center)
+          .width('100%')
+        Text(title)
+          .fontSize(15)
+          .fontColor('#E6EDF3')
+          .fontWeight(FontWeight.Medium)
+          .textAlign(TextAlign.Center)
+          .maxLines(1)
+          .width('100%')
+        Blank()
+      }
+      .width('100%')
+      .height(168)
+      .borderRadius(6)
+      .backgroundColor('#1E2A33')
+      .border({ width: 1, color: '#4C6B80' })
+      .onClick(onClick)
+
+      Text(footer)
+        .fontSize(12)
+        .fontColor('#E6EDF3')
+        .fontWeight(FontWeight.Medium)
+        .textAlign(TextAlign.Center)
+        .maxLines(1)
+        .width('100%')
+    }
+    .width('100%')
+  }
+
+  @Builder
+  private Launcher() {
+    Stack() {
+      Column({ space: 12 }) {
+        Row() {
+          Column({ space: 2 }) {
+            Text('LÖVE')
+              .fontSize(28)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(Color.White)
+            Text('Game Gallery')
+              .fontSize(12)
+              .fontColor('#9EAAB4')
+          }
+          .layoutWeight(1)
+
+          Button('SET')
+            .height(34)
+            .width(64)
+            .backgroundColor('#20262D')
+            .fontColor('#E6EDF3')
+            .onClick(() => {
+              this.settingsOpen = !this.settingsOpen
+            })
+        }
+        .width('100%')
+        .padding({ left: 22, right: 22, top: 14 })
+
+        Row({ space: 18 }) {
+          Column() {
+            this.GameCover(
+              'NO GAME',
+              'SYSTEM',
+              'Nogame',
+              true,
+              '#78D6B2',
+              () => {
+                this.launchNoGame()
+              }
+            )
+          }
+          .layoutWeight(1)
+
+          Column() {
+            this.GameCover(
+              'BUNDLED',
+              'PACK',
+              this.bundledGameExists ? `game.love ${formatBytes(this.bundledGameSize)}` : 'No bundled game',
+              this.bundledGameExists,
+              '#F2C46D',
+              () => {
+                this.launchBundledGame()
+              }
+            )
+          }
+          .layoutWeight(1)
+
+          Column() {
+            this.GameCover(
+              this.storedGameUri.length > 0 ? getDisplayName(this.selectedGamePath) : 'EMPTY SLOT',
+              'RECENT',
+              this.storedGameUri.length > 0 ? 'Last added' : 'No ROM',
+              this.storedGameUri.length > 0,
+              '#8ED8FF',
+              () => {
+                void this.launchStoredExternalGame()
+              }
+            )
+          }
+          .layoutWeight(1)
+
+          Column() {
+            this.AddCover(
+              '.love',
+              'Add file',
+              '#B8E06F',
+              () => {
+                void this.chooseStartupGame(false)
+              }
+            )
+          }
+          .layoutWeight(1)
+
+          Column() {
+            this.AddCover(
+              'Folder',
+              'Add folder',
+              '#D7A0FF',
+              () => {
+                void this.chooseStartupGame(true)
+              }
+            )
+          }
+          .layoutWeight(1)
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .padding({ left: 22, right: 22, top: 4 })
+
+        Row() {
+          Text(this.launchHint)
+            .fontSize(12)
+            .fontColor('#AEB9C2')
+            .maxLines(1)
+            .layoutWeight(1)
+          Text(this.bundledGameExists ? 'Bundled ready' : 'Bundled empty')
+            .fontSize(12)
+            .fontColor('#707A83')
+        }
+        .width('100%')
+        .padding({ left: 22, right: 22, bottom: 16 })
+      }
+      .width('100%')
+      .height('100%')
+
+      if (this.settingsOpen) {
+        Column({ space: 10 }) {
+          Text('Settings')
+            .fontSize(18)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(Color.White)
+            .width('100%')
+          Button(this.debugToolsEnabled ? 'Hide log bubble' : 'Show log bubble')
+            .height(34)
+            .width('100%')
+            .backgroundColor(this.debugToolsEnabled ? '#45535E' : '#E7EEF4')
+            .fontColor(this.debugToolsEnabled ? Color.White : '#17202A')
+            .onClick(() => {
+              this.debugToolsEnabled = !this.debugToolsEnabled
+              if (!this.debugToolsEnabled) {
+                this.floatOpen = false
+              }
+            })
+          Row({ space: 8 }) {
+            Button('Copy log')
+              .height(32)
+              .layoutWeight(1)
+              .onClick(() => {
+                copyToClipboard(getDebugText())
+              })
+            Button('View log')
+              .height(32)
+              .layoutWeight(1)
+              .onClick(() => {
+                promptAction.showDialog({
+                  title: 'Debug',
+                  message: getDebugText(),
+                  buttons: [{ text: 'OK', color: '#999999' }]
+                })
+              })
+          }
+          .width('100%')
+        }
+        .width(260)
+        .padding(14)
+        .borderRadius(8)
+        .backgroundColor('#20262DEE')
+        .border({ width: 1, color: '#46525C' })
+        .position({ x: 22, y: 66 })
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#11161B')
+  }
+
   async aboutToAppear(): Promise<void> {
     context = this.getUIContext()
     const con = context.getHostContext() as common.UIAbilityContext
@@ -563,7 +873,7 @@ struct Index {
       debugInfo = (debugInfo + `\n[Ark] calling sdlCallbackInit\n`).slice(-12000)
     } catch (e) {
     }
-    sdltest.sdlCallbackInit(callbackRef)
+    sdlBridge.sdlCallbackInit(callbackRef)
     try {
       debugInfo = (debugInfo + `[Ark] sdlCallbackInit returned\n`).slice(-12000)
     } catch (e) {
@@ -578,23 +888,23 @@ struct Index {
     });
     controller.on('insertText', (text) => {
       targetText += text;
-      sdltest.sdlTextAppend(text)
+      sdlBridge.sdlTextAppend(text)
     })
     controller.on('deleteLeft', (i) => {
-      sdltest.sdlTextEditing(targetText, targetText.length - 1 - i, i);
+      sdlBridge.sdlTextEditing(targetText, targetText.length - 1 - i, i);
 
       if (targetText.length > 0) {
         targetText = targetText.substring(0, targetText.length - i)
       }
-      hilog.info(DOMAIN, 'testTag', targetText)
+      hilog.info(DOMAIN, LOG_TAG, targetText)
     })
     controller.on('deleteRight', (i) => {
-      sdltest.sdlTextEditing(targetText, 0, i);
+      sdlBridge.sdlTextEditing(targetText, 0, i);
 
       if (targetText.length > 0) {
         targetText = targetText.substring(i, targetText.length)
       }
-      hilog.info(DOMAIN, 'testTag', targetText)
+      hilog.info(DOMAIN, LOG_TAG, targetText)
     })
   }
 
@@ -610,98 +920,50 @@ struct Index {
           launchMainIfReady('surface_onLoad')
         })
       if (this.launcherVisible && !mainLaunched) {
-        Column({ space: 12 }) {
-          Text('选择启动内容')
-            .fontSize(22)
+        this.Launcher()
+      }
+      if (this.debugToolsEnabled) {
+        Column() {
+          if (this.floatOpen) {
+            Button('复制日志')
+              .fontSize(14)
+              .height(34)
+              .onClick(() => {
+                copyToClipboard(getDebugText())
+              })
+            Button('查看日志')
+              .margin({ top: 8 })
+              .fontSize(14)
+              .height(34)
+              .onClick(() => {
+                promptAction.showDialog({
+                  title: 'Debug',
+                  message: getDebugText(),
+                  buttons: [{ text: 'OK', color: '#999999' }]
+                })
+              })
+          }
+          Text('LOG')
+            .fontSize(14)
             .fontColor(Color.White)
-            .fontWeight(FontWeight.Medium)
-          Text(this.bundledGameExists ? `已检测到内置 game.love (${this.bundledGameSize} bytes)` : '未检测到内置 game.love')
-            .fontSize(13)
-            .fontColor('#D0D0D0')
-          if (this.selectedGamePath.length > 0) {
-            Text(this.selectedGamePath)
-              .fontSize(12)
-              .fontColor('#B0B0B0')
-              .maxLines(2)
-          }
-          Text(this.launchHint)
-            .fontSize(12)
-            .fontColor('#B0B0B0')
-          if (this.bundledGameExists) {
-            Button('启动内置 game.love')
-              .width('100%')
-              .onClick(() => {
-                this.launchBundledGame()
-              })
-          }
-          if (this.storedGameUri.length > 0) {
-            Button('启动上次外置游戏')
-              .width('100%')
-              .onClick(() => {
-                void this.launchStoredExternalGame()
-              })
-          }
-          Button('选择 .love 文件')
-            .width('100%')
+            .backgroundColor('#66000000')
+            .borderRadius(20)
+            .width(44)
+            .height(44)
+            .textAlign(TextAlign.Center)
             .onClick(() => {
-              void this.chooseStartupGame(false)
-            })
-          Button('选择游戏目录')
-            .width('100%')
-            .onClick(() => {
-              void this.chooseStartupGame(true)
-            })
-          Button('启动 LÖVE 默认 nogame')
-            .width('100%')
-            .onClick(() => {
-              this.launchNoGame()
+              this.floatOpen = !this.floatOpen
             })
         }
-        .width('84%')
-        .padding(20)
-        .borderRadius(18)
-        .backgroundColor('#CC111111')
-      }
-      Column() {
-        if (this.floatOpen) {
-          Button('复制日志')
-            .fontSize(14)
-            .height(34)
-            .onClick(() => {
-              copyToClipboard(getDebugText())
+        .position({ x: this.floatX, y: this.floatY })
+        .gesture(
+          PanGesture()
+            .onActionUpdate((e) => {
+              this.floatX = this.floatX + e.offsetX
+              this.floatY = this.floatY + e.offsetY
             })
-          Button('查看日志')
-            .margin({ top: 8 })
-            .fontSize(14)
-            .height(34)
-            .onClick(() => {
-              promptAction.showDialog({
-                title: 'Debug',
-                message: getDebugText(),
-                buttons: [{ text: 'OK', color: '#999999' }]
-              })
-            })
-        }
-        Text('LOG')
-          .fontSize(14)
-          .fontColor(Color.White)
-          .backgroundColor('#66000000')
-          .borderRadius(20)
-          .width(44)
-          .height(44)
-          .textAlign(TextAlign.Center)
-          .onClick(() => {
-            this.floatOpen = !this.floatOpen
-          })
+        )
       }
-      .position({ x: this.floatX, y: this.floatY })
-      .gesture(
-        PanGesture()
-          .onActionUpdate((e) => {
-            this.floatX = this.floatX + e.offsetX
-            this.floatY = this.floatY + e.offsetY
-          })
-      )
     }
     .width('100%')
     .height('100%')
@@ -709,7 +971,11 @@ struct Index {
     .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM, SafeAreaEdge.START, SafeAreaEdge.END])
     // .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .onKeyEvent((keyevent) => {
-      sdltest.sdlKeyEvent(keyevent.keyCode, keyevent.type);
+      if (keyevent.keyCode === 2) {
+        return this.handleBack()
+      }
+      sdlBridge.sdlKeyEvent(keyevent.keyCode, keyevent.type);
+      return false
     })
   }
 }
