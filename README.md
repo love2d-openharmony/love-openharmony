@@ -24,6 +24,38 @@
 
 如果是命令行构建，请在仓库根目录执行对应的 Hvigor 命令，并确保本地 OpenHarmony SDK、签名和 NDK/CMake 环境已正确配置。
 
+## GitHub Action 打包
+
+仓库根目录提供了一个复合 Action，可在 OpenHarmony SDK 容器中把 `.love` 游戏包打成 HAP：
+
+```yaml
+jobs:
+  build-openharmony:
+    runs-on: ubuntu-latest
+    container: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.0.2.642
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build OpenHarmony HAP
+        id: build-hap
+        uses: love2d-openharmony/love-openharmony@main
+        with:
+          app-name: "My Love Game"
+          bundle-id: "com.example.mylovegame"
+          love-package: "./game.love"
+          product-name: "my-love-game"
+          version-string: "1.0.0"
+          version-code: "1000000"
+          output-folder: "./dist"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openharmony-hap
+          path: ${{ steps.build-hap.outputs.package-paths }}
+```
+
+如果需要签名，可额外传入 `signing-cert-base64`、`signing-profile-base64`、`signing-key-base64`、`signing-key-alias`、`signing-key-password` 和 `signing-keystore-password`。Action 会输出 `package-paths`，内容是生成的 HAP 路径列表。
+
 ## 子模块
 
 首次克隆后请初始化子模块：

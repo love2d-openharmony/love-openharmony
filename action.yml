@@ -1,0 +1,300 @@
+name: Love actions for OpenHarmony
+description: OpenHarmony CI/CD packaging for LÖVE based games
+branding:
+  icon: "heart"
+  color: "green"
+inputs:
+  app-name:
+    description: App display name.
+    required: false
+    default: "LÖVE for OpenHarmony"
+  bundle-id:
+    description: OpenHarmony bundleName.
+    required: false
+    default: "org.love2d.openharmony"
+  love-ref:
+    description: love-openharmony git ref. Could be a commit hash, tag, or branch name.
+    required: false
+    default: "main"
+  love-patch:
+    description: Git patch file path for the love-openharmony repo. The patch must apply to love-ref.
+    required: false
+  love-package:
+    description: LÖVE game package to bundle as rawfile/game.love.
+    required: false
+    default: "game.love"
+  resource-path:
+    description: Optional path whose contents are copied into entry/src/main/resources.
+    required: false
+  extra-assets:
+    description: Optional shell-style list of files/folders copied into entry/src/main/resources/rawfile.
+    required: false
+  product-name:
+    description: Base name of generated HAP files.
+    required: false
+    default: "love-app"
+  version-string:
+    description: OpenHarmony versionName.
+    required: false
+    default: "1.0.0"
+  version-code:
+    description: OpenHarmony numeric versionCode.
+    required: false
+    default: "1000000"
+  build-mode:
+    description: Hvigor build mode.
+    required: false
+    default: "debug"
+  output-folder:
+    description: Output folder for generated packages.
+    required: false
+    default: "build"
+  signing-cert-base64:
+    description: Optional base64 encoded OpenHarmony signing certificate (.cer).
+    required: false
+  signing-profile-base64:
+    description: Optional base64 encoded OpenHarmony signing profile (.p7b).
+    required: false
+  signing-key-base64:
+    description: Optional base64 encoded OpenHarmony signing key store (.p12).
+    required: false
+  signing-key-alias:
+    description: Signing key alias used by hap-sign-tool.
+    required: false
+    default: "ide_demo_app"
+  signing-key-password:
+    description: Signing key password.
+    required: false
+  signing-keystore-password:
+    description: Signing key store password.
+    required: false
+  sign-tool-path:
+    description: Path to hap-sign-tool.jar in the OpenHarmony SDK image.
+    required: false
+    default: "/harmonyos-tools/command-line-tools/sdk/default/openharmony/toolchains/lib/hap-sign-tool.jar"
+  love-actions-folder:
+    description: Working folder used to checkout love-openharmony.
+    required: false
+    default: "love-actions-openharmony"
+outputs:
+  package-paths:
+    description: Built package paths, separated by spaces.
+    value: ${{ steps.gather-packages.outputs.package-paths }}
+runs:
+  using: composite
+  steps:
+    - name: Create directories
+      shell: bash
+      env:
+        ACTION_FOLDER: ${{ inputs.love-actions-folder }}
+        OUTPUT_FOLDER: ${{ inputs.output-folder }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$ACTION_FOLDER" "$OUTPUT_FOLDER"
+
+    - name: Checkout love-openharmony
+      uses: actions/checkout@v4
+      with:
+        repository: love2d-openharmony/love-openharmony
+        ref: ${{ inputs.love-ref }}
+        submodules: recursive
+        path: ${{ inputs.love-actions-folder }}/love-openharmony
+
+    - name: Apply love-openharmony patch
+      if: ${{ inputs.love-patch != '' }}
+      shell: bash
+      env:
+        LOVE_PATCH: ${{ inputs.love-patch }}
+        WORK_ROOT: ${{ inputs.love-actions-folder }}/love-openharmony
+      run: |
+        set -euo pipefail
+        cp "$LOVE_PATCH" "$WORK_ROOT/love.patch"
+        cd "$WORK_ROOT"
+        git apply ./love.patch
+
+    - name: Locate OpenHarmony build tools
+      id: build-tools
+      shell: bash
+      run: |
+        set -euo pipefail
+        command -v ohpm >/dev/null || {
+          echo "ohpm is required. Run this action in an OpenHarmony SDK environment, for example ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.0.2.642." >&2
+          exit 1
+        }
+        if command -v hvigorw >/dev/null; then
+          echo "hvigor=hvigorw" >> "$GITHUB_OUTPUT"
+        elif command -v hvigor >/dev/null; then
+          echo "hvigor=hvigor" >> "$GITHUB_OUTPUT"
+        else
+          echo "hvigorw or hvigor is required. Run this action in an OpenHarmony SDK environment." >&2
+          exit 1
+        fi
+
+    - name: Install dependencies
+      shell: bash
+      env:
+        WORK_ROOT: ${{ inputs.love-actions-folder }}/love-openharmony
+      run: |
+        set -euo pipefail
+        cd "$WORK_ROOT"
+        ohpm install --all
+
+    - name: Prepare OpenHarmony project
+      shell: python
+      env:
+        WORK_ROOT: ${{ inputs.love-actions-folder }}/love-openharmony
+        APP_NAME: ${{ inputs.app-name }}
+        BUNDLE_ID: ${{ inputs.bundle-id }}
+        LOVE_PACKAGE: ${{ inputs.love-package }}
+        RESOURCE_PATH: ${{ inputs.resource-path }}
+        EXTRA_ASSETS: ${{ inputs.extra-assets }}
+        VERSION_STRING: ${{ inputs.version-string }}
+        VERSION_CODE: ${{ inputs.version-code }}
+      run: |
+        import os
+        import re
+        import shutil
+        import shlex
+        from pathlib import Path
+
+        root = Path(os.environ["WORK_ROOT"])
+        app_name = os.environ["APP_NAME"]
+        bundle_id = os.environ["BUNDLE_ID"]
+        version_string = os.environ["VERSION_STRING"]
+        version_code = os.environ["VERSION_CODE"]
+
+        love_package = Path(os.environ["LOVE_PACKAGE"])
+        if not love_package.is_file():
+            raise FileNotFoundError(f"love-package not found: {love_package}")
+
+        rawfile = root / "entry/src/main/resources/rawfile"
+        rawfile.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(love_package, rawfile / "game.love")
+
+        resource_path = os.environ.get("RESOURCE_PATH", "")
+        if resource_path:
+            src = Path(resource_path)
+            if not src.is_dir():
+                raise NotADirectoryError(f"resource-path not found: {src}")
+            dst = root / "entry/src/main/resources"
+            for item in src.iterdir():
+                target = dst / item.name
+                if item.is_dir():
+                    shutil.copytree(item, target, dirs_exist_ok=True)
+                else:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(item, target)
+
+        for asset in shlex.split(os.environ.get("EXTRA_ASSETS", "")):
+            src = Path(asset)
+            if not src.exists():
+                raise FileNotFoundError(f"extra asset not found: {src}")
+            target = rawfile / src.name
+            if src.is_dir():
+                shutil.copytree(src, target, dirs_exist_ok=True)
+            else:
+                shutil.copy2(src, target)
+
+        def replace_json5_string(path, key, value):
+            text = path.read_text(encoding="utf-8")
+            text = re.sub(rf'("{re.escape(key)}"\s*:\s*)".*?"', rf'\1"{value}"', text)
+            path.write_text(text, encoding="utf-8")
+
+        def replace_json5_number(path, key, value):
+            text = path.read_text(encoding="utf-8")
+            text = re.sub(rf'("{re.escape(key)}"\s*:\s*)[0-9]+', rf'\1{value}', text)
+            path.write_text(text, encoding="utf-8")
+
+        def replace_named_string(path, name, value):
+            text = path.read_text(encoding="utf-8")
+            pattern = rf'("name"\s*:\s*"{re.escape(name)}"\s*,\s*"value"\s*:\s*)".*?"'
+            text = re.sub(pattern, rf'\1"{value}"', text)
+            path.write_text(text, encoding="utf-8")
+
+        replace_json5_string(root / "AppScope/app.json5", "bundleName", bundle_id)
+        replace_json5_string(root / "AppScope/app.json5", "versionName", version_string)
+        replace_json5_number(root / "AppScope/app.json5", "versionCode", version_code)
+        replace_named_string(root / "AppScope/resources/base/element/string.json", "app_name", app_name)
+        replace_named_string(root / "entry/src/main/resources/base/element/string.json", "EntryAbility_label", app_name)
+
+        build_profile = root / "build-profile.json5"
+        text = build_profile.read_text(encoding="utf-8")
+        text = re.sub(r'\n\s*"signingConfig"\s*:\s*"[^"]+"\s*,', '', text)
+        text = re.sub(r'(\n\s*"signingConfigs"\s*:\s*)\[[\s\S]*?\](\s*,\s*\n\s*"products")', r'\1[]\2', text)
+        build_profile.write_text(text, encoding="utf-8")
+
+    - name: Build HAP
+      shell: bash
+      env:
+        WORK_ROOT: ${{ inputs.love-actions-folder }}/love-openharmony
+        HVIGOR: ${{ steps.build-tools.outputs.hvigor }}
+        BUILD_MODE: ${{ inputs.build-mode }}
+      run: |
+        set -euo pipefail
+        cd "$WORK_ROOT"
+        "$HVIGOR" clean --no-daemon
+        "$HVIGOR" assembleHap --mode module -p product=default -p buildMode="$BUILD_MODE" --no-daemon
+
+    - name: Collect unsigned package
+      id: unsigned-package
+      shell: bash
+      env:
+        WORK_ROOT: ${{ inputs.love-actions-folder }}/love-openharmony
+        OUTPUT_FOLDER: ${{ inputs.output-folder }}
+        PRODUCT_NAME: ${{ inputs.product-name }}
+        BUILD_MODE: ${{ inputs.build-mode }}
+      run: |
+        set -euo pipefail
+        hap_path="$(find "$WORK_ROOT/entry/build/default/outputs/default" -name '*.hap' -type f | sort | head -n 1)"
+        if [ -z "$hap_path" ]; then
+          echo "No HAP package was produced." >&2
+          exit 1
+        fi
+        output_path="$OUTPUT_FOLDER/$PRODUCT_NAME-$BUILD_MODE.hap"
+        cp "$hap_path" "$output_path"
+        echo "hap-path=$hap_path" >> "$GITHUB_OUTPUT"
+
+    - name: Sign HAP
+      if: ${{ inputs.signing-cert-base64 != '' && inputs.signing-profile-base64 != '' && inputs.signing-key-base64 != '' && inputs.signing-key-password != '' && inputs.signing-keystore-password != '' }}
+      shell: bash
+      env:
+        UNSIGNED_HAP: ${{ steps.unsigned-package.outputs.hap-path }}
+        OUTPUT_FOLDER: ${{ inputs.output-folder }}
+        PRODUCT_NAME: ${{ inputs.product-name }}
+        BUILD_MODE: ${{ inputs.build-mode }}
+        SIGNING_CERT_BASE64: ${{ inputs.signing-cert-base64 }}
+        SIGNING_PROFILE_BASE64: ${{ inputs.signing-profile-base64 }}
+        SIGNING_KEY_BASE64: ${{ inputs.signing-key-base64 }}
+        SIGNING_KEY_ALIAS: ${{ inputs.signing-key-alias }}
+        SIGNING_KEY_PASSWORD: ${{ inputs.signing-key-password }}
+        SIGNING_KEYSTORE_PASSWORD: ${{ inputs.signing-keystore-password }}
+        SIGN_TOOL_PATH: ${{ inputs.sign-tool-path }}
+      run: |
+        set -euo pipefail
+        signing_dir="$(mktemp -d)"
+        printf '%s' "$SIGNING_CERT_BASE64" | base64 -d > "$signing_dir/app.cer"
+        printf '%s' "$SIGNING_PROFILE_BASE64" | base64 -d > "$signing_dir/app.p7b"
+        printf '%s' "$SIGNING_KEY_BASE64" | base64 -d > "$signing_dir/app.p12"
+        signed_hap="$OUTPUT_FOLDER/$PRODUCT_NAME-$BUILD_MODE-signed.hap"
+        java -jar "$SIGN_TOOL_PATH" \
+          sign-app \
+          -keyAlias "$SIGNING_KEY_ALIAS" \
+          -signAlg "SHA256withECDSA" \
+          -mode "localSign" \
+          -appCertFile "$signing_dir/app.cer" \
+          -profileFile "$signing_dir/app.p7b" \
+          -inFile "$UNSIGNED_HAP" \
+          -keystoreFile "$signing_dir/app.p12" \
+          -outFile "$signed_hap" \
+          -keyPwd "$SIGNING_KEY_PASSWORD" \
+          -keystorePwd "$SIGNING_KEYSTORE_PASSWORD" \
+          -signCode "1"
+
+    - name: Gather packages in output folder
+      id: gather-packages
+      shell: bash
+      env:
+        OUTPUT_FOLDER: ${{ inputs.output-folder }}
+      run: |
+        set -euo pipefail
+        echo "package-paths=$(find "$OUTPUT_FOLDER" -maxdepth 1 -name '*.hap' -type f | sort | tr '\r\n' ' ')" >> "$GITHUB_OUTPUT"
