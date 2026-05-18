@@ -153,6 +153,7 @@ runs:
       run: |
         import os
         import re
+        import json
         import shutil
         import shlex
         from pathlib import Path
@@ -197,18 +198,22 @@ runs:
 
         def replace_json5_string(path, key, value):
             text = path.read_text(encoding="utf-8")
-            text = re.sub(rf'("{re.escape(key)}"\s*:\s*)".*?"', rf'\1"{value}"', text)
+            encoded = json.dumps(value, ensure_ascii=False)
+            text = re.sub(rf'("{re.escape(key)}"\s*:\s*)".*?"', lambda match: match.group(1) + encoded, text)
             path.write_text(text, encoding="utf-8")
 
         def replace_json5_number(path, key, value):
+            if not value.isdigit():
+                raise ValueError(f"{key} must be a non-negative integer: {value}")
             text = path.read_text(encoding="utf-8")
-            text = re.sub(rf'("{re.escape(key)}"\s*:\s*)[0-9]+', rf'\1{value}', text)
+            text = re.sub(rf'("{re.escape(key)}"\s*:\s*)[0-9]+', lambda match: match.group(1) + value, text)
             path.write_text(text, encoding="utf-8")
 
         def replace_named_string(path, name, value):
             text = path.read_text(encoding="utf-8")
+            encoded = json.dumps(value, ensure_ascii=False)
             pattern = rf'("name"\s*:\s*"{re.escape(name)}"\s*,\s*"value"\s*:\s*)".*?"'
-            text = re.sub(pattern, rf'\1"{value}"', text)
+            text = re.sub(pattern, lambda match: match.group(1) + encoded, text)
             path.write_text(text, encoding="utf-8")
 
         replace_json5_string(root / "AppScope/app.json5", "bundleName", bundle_id)
