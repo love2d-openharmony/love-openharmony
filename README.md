@@ -54,6 +54,8 @@ jobs:
           path: ${{ steps.build-hap.outputs.package-paths }}
 ```
 
+示例容器版本来自当前已验证的 HarmonyOS CI 镜像；实际项目可按目标 SDK 选择并更新到兼容的最新镜像。
+
 如果需要签名，可额外传入 `signing-cert-base64`、`signing-profile-base64`、`signing-key-base64`、`signing-key-alias`、`signing-key-password` 和 `signing-keystore-password`。Action 会输出 `package-paths`，内容是生成的 HAP 路径列表。
 
 ## 子模块
