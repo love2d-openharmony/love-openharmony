@@ -118,7 +118,7 @@ runs:
       run: |
         set -euo pipefail
         command -v ohpm >/dev/null || {
-          echo "ohpm is required. Run this action in an OpenHarmony SDK environment, for example ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.0.2.642." >&2
+          echo "ohpm is required. Run this action in an OpenHarmony SDK environment; see this repository's README for an example container." >&2
           exit 1
         }
         if command -v hvigorw >/dev/null; then
@@ -204,7 +204,7 @@ runs:
 
         def replace_json5_number(path, key, value):
             if not value.isdigit():
-                raise ValueError(f"{key} must be a non-negative integer: {value}")
+                raise ValueError(f"{key} must be a numeric string representing a non-negative integer: {value}")
             text = path.read_text(encoding="utf-8")
             text = re.sub(rf'("{re.escape(key)}"\s*:\s*)[0-9]+', lambda match: match.group(1) + value, text)
             path.write_text(text, encoding="utf-8")
@@ -302,4 +302,4 @@ runs:
         OUTPUT_FOLDER: ${{ inputs.output-folder }}
       run: |
         set -euo pipefail
-        echo "package-paths=$(find "$OUTPUT_FOLDER" -maxdepth 1 -name '*.hap' -type f | sort | tr '\r\n' ' ')" >> "$GITHUB_OUTPUT"
+        echo "package-paths=$(find "$OUTPUT_FOLDER" -maxdepth 1 -name '*.hap' -type f | sort | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
