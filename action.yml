@@ -204,7 +204,7 @@ runs:
 
         def replace_json5_number(path, key, value):
             try:
-                number = int(value, 10)
+                number = int(value)
             except ValueError as exc:
                 raise ValueError(f"{key} must be a non-negative integer: {value}") from exc
             if number < 0:
