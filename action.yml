@@ -196,6 +196,8 @@ runs:
             else:
                 shutil.copy2(src, target)
 
+        # These replacements are scoped to the checked-out love-openharmony template.
+        # The replacement counts below fail fast if the expected file shape changes.
         json5_string_pattern = r'"(?:\\.|[^"\\])*"'
 
         def replace_json5_string(path, key, value):
@@ -275,6 +277,8 @@ runs:
           mapfile -t hap_files < <(find "$output_dir" -name '*.hap' -type f | sort)
           if [ "${#hap_files[@]}" -ne 1 ]; then
             echo "Expected exactly one HAP package in $output_dir, found ${#hap_files[@]}." >&2
+            echo "Found HAP files:" >&2
+            printf '  %s\n' "${hap_files[@]}" >&2
             exit 1
           fi
           hap_path="${hap_files[0]}"
@@ -332,4 +336,4 @@ runs:
         OUTPUT_FOLDER: ${{ inputs.output-folder }}
       run: |
         set -euo pipefail
-        echo "package-paths=$(find "$OUTPUT_FOLDER" -maxdepth 1 -name '*.hap' -type f | sort | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+        echo "package-paths=$(find "$OUTPUT_FOLDER" -maxdepth 1 -name '*.hap' -type f | sort | paste -sd ' ' -)" >> "$GITHUB_OUTPUT"
