@@ -199,7 +199,9 @@ runs:
         def replace_json5_string(path, key, value):
             text = path.read_text(encoding="utf-8")
             encoded = json.dumps(value, ensure_ascii=False)
-            text = re.sub(rf'("{re.escape(key)}"\s*:\s*)".*?"', lambda match: match.group(1) + encoded, text)
+            text, count = re.subn(rf'("{re.escape(key)}"\s*:\s*)".*?"', lambda match: match.group(1) + encoded, text)
+            if count != 1:
+                raise ValueError(f"Expected to replace {key} exactly once in {path}, replaced {count} times")
             path.write_text(text, encoding="utf-8")
 
         def replace_json5_number(path, key, value):
@@ -211,14 +213,18 @@ runs:
                 raise ValueError(f"{key} must be a non-negative integer: {value}")
             text = path.read_text(encoding="utf-8")
             value = str(number)
-            text = re.sub(rf'("{re.escape(key)}"\s*:\s*)[0-9]+', lambda match: match.group(1) + value, text)
+            text, count = re.subn(rf'("{re.escape(key)}"\s*:\s*)[0-9]+', lambda match: match.group(1) + value, text)
+            if count != 1:
+                raise ValueError(f"Expected to replace {key} exactly once in {path}, replaced {count} times")
             path.write_text(text, encoding="utf-8")
 
         def replace_named_string(path, name, value):
             text = path.read_text(encoding="utf-8")
             encoded = json.dumps(value, ensure_ascii=False)
             pattern = rf'("name"\s*:\s*"{re.escape(name)}"\s*,\s*"value"\s*:\s*)".*?"'
-            text = re.sub(pattern, lambda match: match.group(1) + encoded, text)
+            text, count = re.subn(pattern, lambda match: match.group(1) + encoded, text)
+            if count != 1:
+                raise ValueError(f"Expected to replace string resource {name} exactly once in {path}, replaced {count} times")
             path.write_text(text, encoding="utf-8")
 
         replace_json5_string(root / "AppScope/app.json5", "bundleName", bundle_id)
@@ -230,7 +236,11 @@ runs:
         build_profile = root / "build-profile.json5"
         text = build_profile.read_text(encoding="utf-8")
         text = re.sub(r'\n\s*"signingConfig"\s*:\s*"[^"]+"\s*,', '', text)
-        text = re.sub(r'(\n\s*"signingConfigs"\s*:\s*)\[[\s\S]*?\](\s*,\s*\n\s*"products")', r'\1[]\2', text)
+        text, count = re.subn(r'(\n\s*"signingConfigs"\s*:\s*)\[[\s\S]*?\](\s*,\s*\n\s*"products")', r'\1[]\2', text, count=1)
+        if count != 1:
+            raise ValueError(f"Expected to clear signingConfigs exactly once in {build_profile}, replaced {count} times")
+        if re.search(r'"signingConfig"\s*:', text):
+            raise ValueError(f"Failed to remove product signingConfig from {build_profile}")
         build_profile.write_text(text, encoding="utf-8")
 
     - name: Build HAP
@@ -255,7 +265,18 @@ runs:
         BUILD_MODE: ${{ inputs.build-mode }}
       run: |
         set -euo pipefail
-        hap_path="$(find "$WORK_ROOT/entry/build/default/outputs/default" -name '*.hap' -type f | sort | head -n 1)"
+        output_dir="$WORK_ROOT/entry/build/default/outputs/default"
+        expected_hap="$output_dir/entry-default.hap"
+        if [ -f "$expected_hap" ]; then
+          hap_path="$expected_hap"
+        else
+          mapfile -t hap_files < <(find "$output_dir" -name '*.hap' -type f | sort)
+          if [ "${#hap_files[@]}" -ne 1 ]; then
+            echo "Expected exactly one HAP package in $output_dir, found ${#hap_files[@]}." >&2
+            exit 1
+          fi
+          hap_path="${hap_files[0]}"
+        fi
         if [ -z "$hap_path" ]; then
           echo "No HAP package was produced." >&2
           exit 1
