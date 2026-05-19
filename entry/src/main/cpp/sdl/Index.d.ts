@@ -8,3 +8,5 @@ export const sdlDialogClearSelection: () => void;
 export const sdlDialogFileSelected: (path: string) => void;
 export const sdlSendDialogStatus: (idx: number) => void;
 export const sdlSetActualScreenSize: (width: number, height: number) => number;
+export const sdlOnBackground: () => number;
+export const sdlOnForeground: () => number;

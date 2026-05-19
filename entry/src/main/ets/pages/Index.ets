@@ -14,6 +14,7 @@ import { display } from '@kit.ArkUI';
 
 import  { picker, fileShare } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { setSDLLifecycleHandler } from '../SDLLaunchState';
 
 const DOMAIN = 0x0000;
 const LOG_TAG = 'LoveOHOS';
@@ -44,6 +45,13 @@ function launchMainIfReady(reason: string) {
   }
   hilog.info(DOMAIN, LOG_TAG, '%{public}s', `launchMainIfReady reason=${reason}`)
   sdlBridge.sdlLaunchMain("liblove.so", "SDL_main", mainArgs)
+  setSDLLifecycleHandler((background: boolean) => {
+    if (background) {
+      sdlBridge.sdlOnBackground()
+    } else {
+      sdlBridge.sdlOnForeground()
+    }
+  })
 }
 
 export class ArkNapiCallback {
