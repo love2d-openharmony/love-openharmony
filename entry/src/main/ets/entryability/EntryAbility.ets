@@ -8,6 +8,7 @@ import { promptAction, window } from '@kit.ArkUI';
 import { KeyboardAvoidMode } from '@ohos.arkui.UIContext';
 import { BusinessError } from '@kit.BasicServicesKit';
 import bundleManager from '@ohos.bundle.bundleManager';
+import { notifySDLBackgroundRequested, notifySDLForegroundRequested } from '../SDLLaunchState';
 
 const DOMAIN = 0x0000;
 
@@ -77,10 +78,12 @@ export default class EntryAbility extends UIAbility {
   onForeground(): void {
     // Ability has brought to foreground
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
+    notifySDLForegroundRequested()
   }
 
   onBackground(): void {
     // Ability has back to background
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');
+    notifySDLBackgroundRequested()
   }
 }
