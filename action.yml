@@ -45,6 +45,10 @@ inputs:
     description: Hvigor build mode.
     required: false
     default: "debug"
+  love-jit:
+    description: Build with LuaJIT enabled.
+    required: false
+    default: "true"
   output-folder:
     description: Output folder for generated packages.
     required: false
@@ -150,6 +154,7 @@ runs:
         EXTRA_ASSETS: ${{ inputs.extra-assets }}
         VERSION_STRING: ${{ inputs.version-string }}
         VERSION_CODE: ${{ inputs.version-code }}
+        LOVE_JIT: ${{ inputs.love-jit }}
       run: |
         import os
         import re
@@ -163,6 +168,13 @@ runs:
         bundle_id = os.environ["BUNDLE_ID"]
         version_string = os.environ["VERSION_STRING"]
         version_code = os.environ["VERSION_CODE"]
+        love_jit = os.environ["LOVE_JIT"].strip().lower()
+        if love_jit in ("1", "true", "on", "yes"):
+            cmake_love_jit = "ON"
+        elif love_jit in ("0", "false", "off", "no"):
+            cmake_love_jit = "OFF"
+        else:
+            raise ValueError(f"love-jit must be true or false: {os.environ['LOVE_JIT']}")
 
         love_package = Path(os.environ["LOVE_PACKAGE"])
         if not love_package.is_file():
@@ -246,6 +258,13 @@ runs:
         if re.search(r'"signingConfig"\s*:', text):
             raise ValueError(f"Failed to remove product signingConfig from {build_profile}")
         build_profile.write_text(text, encoding="utf-8")
+
+        cmake_lists = root / "entry/src/main/cpp/CMakeLists.txt"
+        text = cmake_lists.read_text(encoding="utf-8")
+        text, count = re.subn(r'set\(LOVE_JIT\s+(?:ON|OFF)\s+CACHE BOOL\s+(?:"[^"]*"|\'[^\']*\'|[^)\s]*)\s+FORCE\)', f'set(LOVE_JIT {cmake_love_jit} CACHE BOOL "" FORCE)', text, count=1)
+        if count != 1:
+            raise ValueError(f"Expected to set LOVE_JIT exactly once in {cmake_lists}, replaced {count} times")
+        cmake_lists.write_text(text, encoding="utf-8")
 
     - name: Build HAP
       shell: bash
