@@ -17,6 +17,18 @@ set(LOVE_JIT ON CACHE BOOL "" FORCE)
 set(MEGA_LOVE "${LOVE_ROOT}")
 add_subdirectory("${MEGASOURCE_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/megasource")
 
+if(CMAKE_SYSTEM_NAME MATCHES "OHOS|OpenHarmony|HarmonyOS" AND TARGET luajit-build)
+  include(ExternalProject)
+  ExternalProject_Get_Property(luajit-build source_dir)
+  ExternalProject_Add_Step(luajit-build disable_luajit_jit
+    COMMAND "${CMAKE_COMMAND}"
+      -DLUAJIT_MAKEFILE="${source_dir}/src/Makefile"
+      -P "${CMAKE_CURRENT_SOURCE_DIR}/DisableLuaJITJit.cmake"
+    DEPENDEES configure
+    DEPENDERS build
+  )
+endif()
+
 add_library(entry SHARED
   entry_napi.cpp
 )

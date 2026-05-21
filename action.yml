@@ -45,7 +45,7 @@ inputs:
     required: false
     default: "debug"
   love-jit:
-    description: Build with LuaJIT enabled.
+    description: Build with LuaJIT enabled. On OpenHarmony, the LuaJIT JIT compiler is disabled at compile time to comply with anonymous executable memory restrictions.
     required: false
     default: "true"
   output-folder:

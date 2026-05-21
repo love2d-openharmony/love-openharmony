@@ -58,6 +58,8 @@ jobs:
 
 如果不传 `love-package`，Action 会构建不包含内置游戏包的默认启动器。如果传入的 `love-package` 路径下没有 `.love` 文件，Action 会生成一个最小默认包用于打包验证。如果需要签名，可额外传入 `signing-cert-base64`、`signing-profile-base64`、`signing-key-base64`、`signing-key-alias`、`signing-key-password` 和 `signing-keystore-password`。Action 会输出 `package-paths`，内容是生成的 HAP 路径列表。
 
+OpenHarmony 对匿名内存执行权限有限制。仓库在 OpenHarmony native 构建中会为 LuaJIT 自动添加 `-DLUAJIT_DISABLE_JIT`，保留 LuaJIT 运行时但关闭 JIT 编译器，避免运行时申请匿名可执行内存失败。
+
 ## 自动打包
 
 仓库已内置 `.github/workflows/package.yml` 自动打包流程，会在推送到 `main`、推送 `v*` 标签或手动触发 `workflow_dispatch` 时运行。流程会直接引用当前仓库 `action.yml` 中的复合 Action 构建未签名 HAP，并通过 `actions/upload-artifact` 上传 `openharmony-hap` 构建产物。
