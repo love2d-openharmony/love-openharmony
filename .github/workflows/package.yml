@@ -95,7 +95,7 @@ jobs:
           signing-cert-base64: ${{ secrets.OPENHARMONY_SIGNING_CERT_BASE64 }}
           signing-profile-base64: ${{ secrets.OPENHARMONY_SIGNING_PROFILE_BASE64 }}
           signing-key-base64: ${{ secrets.OPENHARMONY_SIGNING_KEY_BASE64 }}
-          signing-key-alias: ${{ secrets.OPENHARMONY_SIGNING_KEY_ALIAS || 'ide_demo_app' }}
+          signing-key-alias: ${{ secrets.OPENHARMONY_SIGNING_KEY_ALIAS }}
           signing-key-password: ${{ secrets.OPENHARMONY_SIGNING_KEY_PASSWORD }}
           signing-keystore-password: ${{ secrets.OPENHARMONY_SIGNING_KEYSTORE_PASSWORD }}
 
