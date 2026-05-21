@@ -144,7 +144,7 @@ runs:
         ohpm install --all
 
     - name: Prepare OpenHarmony project
-      shell: python3
+      shell: python3 {0}
       env:
         WORK_ROOT: ${{ inputs.love-actions-folder }}/love-openharmony
         APP_NAME: ${{ inputs.app-name }}
