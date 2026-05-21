@@ -80,11 +80,10 @@ jobs:
           tmp_dir="$(mktemp -d)"
           trap 'rm -rf "$tmp_dir"' EXIT
 
-          cat > "$tmp_dir/main.lua" <<'LUA'
-          function love.draw()
-            love.graphics.print('LÖVE for OpenHarmony', 32, 32)
-          end
-          LUA
+          printf '%s\n' \
+            'function love.draw()' \
+            "  love.graphics.print('LÖVE for OpenHarmony', 32, 32)" \
+            'end' > "$tmp_dir/main.lua"
 
           (cd "$tmp_dir" && zip -q -0 "$package_abs" main.lua)
           echo "Created default LÖVE package: $LOVE_PACKAGE"
