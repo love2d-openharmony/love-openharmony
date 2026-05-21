@@ -68,8 +68,8 @@ jobs:
             exit 0
           fi
 
-          command -v zip >/dev/null || {
-            echo "zip is required to create the default LÖVE package." >&2
+          command -v jar >/dev/null || {
+            echo "jar is required to create the default LÖVE package." >&2
             exit 1
           }
 
@@ -85,7 +85,7 @@ jobs:
             "  love.graphics.print('LÖVE for OpenHarmony', 32, 32)" \
             'end' > "$tmp_dir/main.lua"
 
-          zip -j -q -0 "$package_abs" "$tmp_dir/main.lua"
+          jar cfM "$package_abs" -C "$tmp_dir" main.lua
           echo "Created default LÖVE package: $LOVE_PACKAGE"
 
       - name: Build OpenHarmony HAP
