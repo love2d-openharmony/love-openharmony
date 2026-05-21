@@ -14,7 +14,6 @@ on:
       love-package:
         description: Path to the .love package in this repository
         required: false
-        default: game.love
       product-name:
         description: Base name of generated HAP files
         required: false
@@ -44,11 +43,16 @@ on:
 permissions:
   contents: read
 
+env:
+  DEFAULT_LOVE_PACKAGE: game.love
+
 jobs:
   package-openharmony:
     name: Build OpenHarmony HAP
     runs-on: ubuntu-latest
     container: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.0.2.642
+    env:
+      LOVE_PACKAGE: ${{ github.event.inputs['love-package'] || env.DEFAULT_LOVE_PACKAGE }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -58,7 +62,7 @@ jobs:
       - name: Prepare default LÖVE package
         shell: python
         env:
-          LOVE_PACKAGE: ${{ github.event.inputs['love-package'] || 'game.love' }}
+          LOVE_PACKAGE: ${{ env.LOVE_PACKAGE }}
         run: |
           import os
           import zipfile
@@ -86,7 +90,7 @@ jobs:
           app-name: ${{ github.event.inputs['app-name'] || 'LÖVE for OpenHarmony' }}
           bundle-id: ${{ github.event.inputs['bundle-id'] || 'org.love2d.openharmony' }}
           love-ref: ${{ github.sha }}
-          love-package: ${{ github.event.inputs['love-package'] || 'game.love' }}
+          love-package: ${{ env.LOVE_PACKAGE }}
           product-name: ${{ github.event.inputs['product-name'] || 'love-openharmony' }}
           version-string: ${{ github.event.inputs['version-string'] || '1.0.0' }}
           version-code: ${{ github.event.inputs['version-code'] || '1000000' }}
