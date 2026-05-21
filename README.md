@@ -56,13 +56,13 @@ jobs:
 
 示例容器版本来自当前已验证的 HarmonyOS CI 镜像；实际项目可按目标 SDK 选择并更新到兼容的最新镜像。
 
-如果需要签名，可额外传入 `signing-cert-base64`、`signing-profile-base64`、`signing-key-base64`、`signing-key-alias`、`signing-key-password` 和 `signing-keystore-password`。Action 会输出 `package-paths`，内容是生成的 HAP 路径列表。
+如果不传 `love-package`，Action 会构建不包含内置游戏包的默认启动器。如果传入的 `love-package` 路径下没有 `.love` 文件，Action 会生成一个最小默认包用于打包验证。如果需要签名，可额外传入 `signing-cert-base64`、`signing-profile-base64`、`signing-key-base64`、`signing-key-alias`、`signing-key-password` 和 `signing-keystore-password`。Action 会输出 `package-paths`，内容是生成的 HAP 路径列表。
 
 ## 自动打包
 
 仓库已内置 `.github/workflows/package.yml` 自动打包流程，会在推送到 `main`、推送 `v*` 标签或手动触发 `workflow_dispatch` 时运行。流程会直接引用当前仓库 `action.yml` 中的复合 Action 构建未签名 HAP，并通过 `actions/upload-artifact` 上传 `openharmony-hap` 构建产物。
 
-手动触发时可以配置应用名称、包名、`.love` 包路径、产物名、版本号和构建模式；如果指定路径下没有 `.love` 文件，流程会生成一个最小默认包用于打包验证。
+手动触发时可以配置应用名称、包名、`.love` 包路径、产物名、版本号和构建模式；如果不指定 `.love` 包路径，会构建不包含内置游戏包的默认启动器。
 
 ## 子模块
 

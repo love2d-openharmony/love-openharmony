@@ -12,7 +12,7 @@ on:
         required: false
         default: org.love2d.openharmony
       love-package:
-        description: Path to the .love package in this repository. Defaults to game.love.
+        description: Path to the .love package in this repository. Leave empty to build without a bundled game.
         required: false
       product-name:
         description: Base name of generated HAP files
@@ -44,7 +44,7 @@ permissions:
   contents: read
 
 env:
-  LOVE_PACKAGE: ${{ github.event.inputs['love-package'] || 'game.love' }}
+  LOVE_PACKAGE: ${{ github.event.inputs['love-package'] || '' }}
 
 jobs:
   package-openharmony:
@@ -64,37 +64,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Prepare default LÖVE package
-        shell: bash
-        env:
-          LOVE_PACKAGE: ${{ env.LOVE_PACKAGE }}
-        run: |
-          set -euo pipefail
-          if [ -f "$LOVE_PACKAGE" ]; then
-            echo "Using existing LÖVE package: $LOVE_PACKAGE"
-            exit 0
-          fi
-
-          command -v zip >/dev/null || {
-            echo "zip is required to create the default LÖVE package." >&2
-            exit 1
-          }
-
-          package_dir="$(dirname "$LOVE_PACKAGE")"
-          mkdir -p "$package_dir"
-          package_name="$(basename "$LOVE_PACKAGE")"
-          package_abs="$(cd "$package_dir" && pwd)/$package_name"
-          tmp_dir="$(mktemp -d)"
-          trap 'rm -rf "$tmp_dir"' EXIT
-
-          printf '%s\n' \
-            'function love.draw()' \
-            "  love.graphics.print('LÖVE for OpenHarmony', 32, 32)" \
-            'end' > "$tmp_dir/main.lua"
-
-          zip -j -q -0 "$package_abs" "$tmp_dir/main.lua"
-          echo "Created default LÖVE package: $LOVE_PACKAGE"
 
       - name: Build OpenHarmony HAP
         id: build-hap
