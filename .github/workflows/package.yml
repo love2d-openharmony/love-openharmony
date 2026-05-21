@@ -1,0 +1,105 @@
+name: Package OpenHarmony HAP
+
+on:
+  workflow_dispatch:
+    inputs:
+      app-name:
+        description: App display name
+        required: false
+        default: LÖVE for OpenHarmony
+      bundle-id:
+        description: OpenHarmony bundleName
+        required: false
+        default: org.love2d.openharmony
+      love-package:
+        description: Path to the .love package in this repository. Defaults to game.love.
+        required: false
+      product-name:
+        description: Base name of generated HAP files
+        required: false
+        default: love-openharmony
+      version-string:
+        description: OpenHarmony versionName
+        required: false
+        default: 1.0.0
+      version-code:
+        description: OpenHarmony numeric versionCode
+        required: false
+        default: '1000000'
+      build-mode:
+        description: Hvigor build mode
+        required: false
+        default: debug
+        type: choice
+        options:
+          - debug
+          - release
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+env:
+  LOVE_PACKAGE: ${{ github.event.inputs['love-package'] || 'game.love' }}
+
+jobs:
+  package-openharmony:
+    name: Build OpenHarmony HAP
+    runs-on: ubuntu-latest
+    container: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.0.2.642
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Prepare default LÖVE package
+        shell: bash
+        env:
+          LOVE_PACKAGE: ${{ env.LOVE_PACKAGE }}
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          import os
+          import zipfile
+          from pathlib import Path
+
+          package = Path(os.environ["LOVE_PACKAGE"])
+          if package.is_file():
+              print(f"Using existing LÖVE package: {package}")
+          else:
+              package.parent.mkdir(parents=True, exist_ok=True)
+              with zipfile.ZipFile(package, "w", zipfile.ZIP_STORED) as archive:
+                  archive.writestr(
+                      "main.lua",
+                      "function love.draw()\n"
+                      "  love.graphics.print('LÖVE for OpenHarmony', 32, 32)\n"
+                      "end\n",
+                  )
+              print(f"Created default LÖVE package: {package}")
+          PY
+
+      - name: Build OpenHarmony HAP
+        id: build-hap
+        uses: ./
+        with:
+          app-name: ${{ github.event.inputs['app-name'] || 'LÖVE for OpenHarmony' }}
+          bundle-id: ${{ github.event.inputs['bundle-id'] || 'org.love2d.openharmony' }}
+          love-ref: ${{ github.sha }}
+          love-package: ${{ env.LOVE_PACKAGE }}
+          product-name: ${{ github.event.inputs['product-name'] || 'love-openharmony' }}
+          version-string: ${{ github.event.inputs['version-string'] || '1.0.0' }}
+          version-code: ${{ github.event.inputs['version-code'] || '1000000' }}
+          build-mode: ${{ github.event.inputs['build-mode'] || 'debug' }}
+          output-folder: ./dist
+
+      - name: Upload HAP artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openharmony-hap
+          path: ${{ steps.build-hap.outputs.package-paths }}
+          if-no-files-found: error
