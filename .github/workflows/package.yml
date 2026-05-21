@@ -85,7 +85,7 @@ jobs:
             "  love.graphics.print('LÖVE for OpenHarmony', 32, 32)" \
             'end' > "$tmp_dir/main.lua"
 
-          (cd "$tmp_dir" && zip -q -0 "$package_abs" main.lua)
+          zip -j -q -0 "$package_abs" "$tmp_dir/main.lua"
           echo "Created default LÖVE package: $LOVE_PACKAGE"
 
       - name: Build OpenHarmony HAP
