@@ -48,17 +48,9 @@ env:
 
 jobs:
   package-openharmony:
-    name: Build OpenHarmony HAP (${{ matrix.jit_name }})
+    name: Build OpenHarmony HAP
     runs-on: ubuntu-latest
     container: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - jit_name: jit
-            love_jit: 'true'
-          - jit_name: jit-off
-            love_jit: 'false'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -73,16 +65,15 @@ jobs:
           bundle-id: ${{ github.event.inputs['bundle-id'] || 'org.love2d.openharmony' }}
           love-ref: ${{ github.sha }}
           love-package: ${{ env.LOVE_PACKAGE }}
-          product-name: ${{ github.event.inputs['product-name'] || 'love-openharmony' }}-${{ matrix.jit_name }}
+          product-name: ${{ github.event.inputs['product-name'] || 'love-openharmony' }}
           version-string: ${{ github.event.inputs['version-string'] || '1.0.0' }}
           version-code: ${{ github.event.inputs['version-code'] || '1000000' }}
           build-mode: ${{ github.event.inputs['build-mode'] || 'debug' }}
-          love-jit: ${{ matrix.love_jit }}
           output-folder: ./dist
 
       - name: Upload HAP artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: openharmony-hap-${{ matrix.jit_name }}
+          name: openharmony-hap
           path: ${{ steps.build-hap.outputs.package-paths }}
           if-no-files-found: error
