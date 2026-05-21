@@ -140,7 +140,7 @@ runs:
         ohpm install --all
 
     - name: Prepare OpenHarmony project
-      shell: python
+      shell: bash
       env:
         WORK_ROOT: ${{ inputs.love-actions-folder }}/love-openharmony
         APP_NAME: ${{ inputs.app-name }}
@@ -151,101 +151,139 @@ runs:
         VERSION_STRING: ${{ inputs.version-string }}
         VERSION_CODE: ${{ inputs.version-code }}
       run: |
-        import os
-        import re
-        import json
-        import shutil
-        import shlex
-        from pathlib import Path
+        set -euo pipefail
+        perl <<'PL'
+        use strict;
+        use warnings;
+        use File::Basename qw(basename dirname);
+        use File::Copy qw(copy);
+        use File::Path qw(make_path);
+        use File::Spec;
+        use JSON::PP;
+        use Text::ParseWords qw(shellwords);
+        use Encode qw(decode);
 
-        root = Path(os.environ["WORK_ROOT"])
-        app_name = os.environ["APP_NAME"]
-        bundle_id = os.environ["BUNDLE_ID"]
-        version_string = os.environ["VERSION_STRING"]
-        version_code = os.environ["VERSION_CODE"]
+        use open qw(:std :encoding(UTF-8));
 
-        love_package = Path(os.environ["LOVE_PACKAGE"])
-        if not love_package.is_file():
-            raise FileNotFoundError(f"love-package not found: {love_package}")
+        sub env_text {
+          my ($name) = @_;
+          return decode('UTF-8', $ENV{$name} // '');
+        }
 
-        rawfile = root / "entry/src/main/resources/rawfile"
-        rawfile.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(love_package, rawfile / "game.love")
+        my $root = $ENV{WORK_ROOT};
+        my $app_name = env_text('APP_NAME');
+        my $bundle_id = env_text('BUNDLE_ID');
+        my $version_string = env_text('VERSION_STRING');
+        my $version_code = $ENV{VERSION_CODE};
 
-        resource_path = os.environ.get("RESOURCE_PATH", "")
-        if resource_path:
-            src = Path(resource_path)
-            if not src.is_dir():
-                raise NotADirectoryError(f"resource-path not found: {src}")
-            dst = root / "entry/src/main/resources"
-            for item in src.iterdir():
-                target = dst / item.name
-                if item.is_dir():
-                    shutil.copytree(item, target, dirs_exist_ok=True)
-                else:
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(item, target)
+        my $love_package = $ENV{LOVE_PACKAGE};
+        die "love-package not found: $love_package\n" unless -f $love_package;
 
-        for asset in shlex.split(os.environ.get("EXTRA_ASSETS", "")):
-            src = Path(asset)
-            if not src.exists():
-                raise FileNotFoundError(f"extra asset not found: {src}")
-            target = rawfile / src.name
-            if src.is_dir():
-                shutil.copytree(src, target, dirs_exist_ok=True)
-            else:
-                shutil.copy2(src, target)
+        sub path {
+          return File::Spec->catfile(@_);
+        }
+
+        sub copy_path {
+          my ($src, $dst) = @_;
+          if (-d $src) {
+            make_path($dst);
+            opendir(my $dir, $src) or die "Failed to open $src: $!\n";
+            while (defined(my $entry = readdir($dir))) {
+              next if $entry eq '.' || $entry eq '..';
+              copy_path(path($src, $entry), path($dst, $entry));
+            }
+            closedir($dir);
+          } else {
+            make_path(dirname($dst));
+            copy($src, $dst) or die "Failed to copy $src to $dst: $!\n";
+          }
+        }
+
+        my $rawfile = path($root, qw(entry src main resources rawfile));
+        make_path($rawfile);
+        copy($love_package, path($rawfile, 'game.love'))
+          or die "Failed to copy $love_package to rawfile/game.love: $!\n";
+
+        my $resource_path = $ENV{RESOURCE_PATH} // '';
+        if ($resource_path ne '') {
+          die "resource-path not found: $resource_path\n" unless -d $resource_path;
+          my $dst = path($root, qw(entry src main resources));
+          opendir(my $dir, $resource_path) or die "Failed to open $resource_path: $!\n";
+          while (defined(my $entry = readdir($dir))) {
+            next if $entry eq '.' || $entry eq '..';
+            copy_path(path($resource_path, $entry), path($dst, $entry));
+          }
+          closedir($dir);
+        }
+
+        for my $asset (shellwords($ENV{EXTRA_ASSETS} // '')) {
+          die "extra asset not found: $asset\n" unless -e $asset;
+          copy_path($asset, path($rawfile, basename($asset)));
+        }
 
         # These replacements are scoped to the checked-out love-openharmony template.
         # The replacement counts below fail fast if the expected file shape changes.
-        json5_string_pattern = r'"(?:\\.|[^"\\])*"'
+        my $json = JSON::PP->new->utf8(0)->allow_nonref;
+        my $json5_string_pattern = qr/"(?:\\.|[^"\\])*"/;
 
-        def replace_json5_string(path, key, value):
-            text = path.read_text(encoding="utf-8")
-            encoded = json.dumps(value, ensure_ascii=False)
-            text, count = re.subn(rf'("{re.escape(key)}"\s*:\s*){json5_string_pattern}', lambda match: match.group(1) + encoded, text)
-            if count != 1:
-                raise ValueError(f"Expected to replace {key} exactly once in {path}, replaced {count} times")
-            path.write_text(text, encoding="utf-8")
+        sub read_text {
+          my ($file) = @_;
+          open(my $fh, '<:encoding(UTF-8)', $file) or die "Failed to read $file: $!\n";
+          local $/;
+          return <$fh>;
+        }
 
-        def replace_json5_number(path, key, value):
-            try:
-                number = int(value)
-            except ValueError as exc:
-                raise ValueError(f"{key} must be a non-negative integer: {value}") from exc
-            if number < 0:
-                raise ValueError(f"{key} must be a non-negative integer: {value}")
-            text = path.read_text(encoding="utf-8")
-            value = str(number)
-            text, count = re.subn(rf'("{re.escape(key)}"\s*:\s*)[0-9]+', lambda match: match.group(1) + value, text)
-            if count != 1:
-                raise ValueError(f"Expected to replace {key} exactly once in {path}, replaced {count} times")
-            path.write_text(text, encoding="utf-8")
+        sub write_text {
+          my ($file, $text) = @_;
+          open(my $fh, '>:encoding(UTF-8)', $file) or die "Failed to write $file: $!\n";
+          print {$fh} $text;
+        }
 
-        def replace_named_string(path, name, value):
-            text = path.read_text(encoding="utf-8")
-            encoded = json.dumps(value, ensure_ascii=False)
-            pattern = rf'("name"\s*:\s*"{re.escape(name)}"\s*,\s*"value"\s*:\s*){json5_string_pattern}'
-            text, count = re.subn(pattern, lambda match: match.group(1) + encoded, text)
-            if count != 1:
-                raise ValueError(f"Expected to replace string resource {name} exactly once in {path}, replaced {count} times")
-            path.write_text(text, encoding="utf-8")
+        sub replace_json5_string {
+          my ($file, $key, $value) = @_;
+          my $text = read_text($file);
+          my $encoded = $json->encode($value);
+          my $quoted_key = quotemeta($key);
+          my $count = ($text =~ s/("$quoted_key"\s*:\s*)$json5_string_pattern/$1$encoded/g);
+          die "Expected to replace $key exactly once in $file, replaced $count times\n" unless $count == 1;
+          write_text($file, $text);
+        }
 
-        replace_json5_string(root / "AppScope/app.json5", "bundleName", bundle_id)
-        replace_json5_string(root / "AppScope/app.json5", "versionName", version_string)
-        replace_json5_number(root / "AppScope/app.json5", "versionCode", version_code)
-        replace_named_string(root / "AppScope/resources/base/element/string.json", "app_name", app_name)
-        replace_named_string(root / "entry/src/main/resources/base/element/string.json", "EntryAbility_label", app_name)
+        sub replace_json5_number {
+          my ($file, $key, $value) = @_;
+          die "$key must be a non-negative integer: $value\n" unless defined($value) && $value =~ /\A[0-9]+\z/;
+          my $number = 0 + $value;
+          my $text = read_text($file);
+          my $quoted_key = quotemeta($key);
+          my $count = ($text =~ s/("$quoted_key"\s*:\s*)[0-9]+/$1$number/g);
+          die "Expected to replace $key exactly once in $file, replaced $count times\n" unless $count == 1;
+          write_text($file, $text);
+        }
 
-        build_profile = root / "build-profile.json5"
-        text = build_profile.read_text(encoding="utf-8")
-        text = re.sub(rf'\n\s*"signingConfig"\s*:\s*{json5_string_pattern}\s*,', '', text)
-        text, count = re.subn(r'(\n\s*"signingConfigs"\s*:\s*)\[[\s\S]*?\](\s*,\s*\n\s*"products")', r'\1[]\2', text, count=1)
-        if count != 1:
-            raise ValueError(f"Expected to clear signingConfigs exactly once in {build_profile}, replaced {count} times")
-        if re.search(r'"signingConfig"\s*:', text):
-            raise ValueError(f"Failed to remove product signingConfig from {build_profile}")
-        build_profile.write_text(text, encoding="utf-8")
+        sub replace_named_string {
+          my ($file, $name, $value) = @_;
+          my $text = read_text($file);
+          my $encoded = $json->encode($value);
+          my $quoted_name = quotemeta($name);
+          my $count = ($text =~ s/("name"\s*:\s*"$quoted_name"\s*,\s*"value"\s*:\s*)$json5_string_pattern/$1$encoded/g);
+          die "Expected to replace string resource $name exactly once in $file, replaced $count times\n" unless $count == 1;
+          write_text($file, $text);
+        }
+
+        replace_json5_string(path($root, qw(AppScope app.json5)), 'bundleName', $bundle_id);
+        replace_json5_string(path($root, qw(AppScope app.json5)), 'versionName', $version_string);
+        replace_json5_number(path($root, qw(AppScope app.json5)), 'versionCode', $version_code);
+        replace_named_string(path($root, qw(AppScope resources base element string.json)), 'app_name', $app_name);
+        replace_named_string(path($root, qw(entry src main resources base element string.json)), 'EntryAbility_label', $app_name);
+
+        my $build_profile = path($root, 'build-profile.json5');
+        my $text = read_text($build_profile);
+        $text =~ s/\n\s*"signingConfig"\s*:\s*$json5_string_pattern\s*,//g;
+        my $count = ($text =~ s/(\n\s*"signingConfigs"\s*:\s*)\[[\s\S]*?\](\s*,\s*\n\s*"products")/$1\[\]$2/s);
+        die "Expected to clear signingConfigs exactly once in $build_profile, replaced $count times\n" unless $count == 1;
+        die "Failed to remove product signingConfig from $build_profile\n" if $text =~ /"signingConfig"\s*:/;
+        write_text($build_profile, $text);
+        PL
 
     - name: Build HAP
       shell: bash

@@ -63,25 +63,29 @@ jobs:
           LOVE_PACKAGE: ${{ env.LOVE_PACKAGE }}
         run: |
           set -euo pipefail
-          python <<'PY'
-          import os
-          import zipfile
-          from pathlib import Path
+          perl <<'PL'
+          use strict;
+          use warnings;
+          use utf8;
+          use File::Basename qw(dirname);
+          use File::Path qw(make_path);
+          use IO::Compress::Zip qw(zip $ZipError ZIP_CM_STORE);
 
-          package = Path(os.environ["LOVE_PACKAGE"])
-          if package.is_file():
-              print(f"Using existing LÖVE package: {package}")
-          else:
-              package.parent.mkdir(parents=True, exist_ok=True)
-              with zipfile.ZipFile(package, "w", zipfile.ZIP_STORED) as archive:
-                  archive.writestr(
-                      "main.lua",
-                      "function love.draw()\n"
-                      "  love.graphics.print('LÖVE for OpenHarmony', 32, 32)\n"
-                      "end\n",
-                  )
-              print(f"Created default LÖVE package: {package}")
-          PY
+          binmode STDOUT, ':encoding(UTF-8)';
+
+          my $package = $ENV{LOVE_PACKAGE};
+          if (-f $package) {
+            print "Using existing LÖVE package: $package\n";
+          } else {
+            make_path(dirname($package));
+            my $main_lua = "function love.draw()\n"
+              . "  love.graphics.print('LÖVE for OpenHarmony', 32, 32)\n"
+              . "end\n";
+            zip \$main_lua => $package, Name => 'main.lua', Method => ZIP_CM_STORE
+              or die "Failed to create $package: $ZipError\n";
+            print "Created default LÖVE package: $package\n";
+          }
+          PL
 
       - name: Build OpenHarmony HAP
         id: build-hap
