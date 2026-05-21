@@ -261,7 +261,7 @@ runs:
 
         cmake_lists = root / "entry/src/main/cpp/CMakeLists.txt"
         text = cmake_lists.read_text(encoding="utf-8")
-        text, count = re.subn(r'set\(LOVE_JIT\s+(?:ON|OFF)\s+CACHE BOOL "" FORCE\)', f'set(LOVE_JIT {cmake_love_jit} CACHE BOOL "" FORCE)', text, count=1)
+        text, count = re.subn(r'set\(LOVE_JIT\s+(?:ON|OFF)\s+CACHE BOOL\s+(?:"[^"]*"|\'[^\']*\'|[^)\s]*)\s+FORCE\)', f'set(LOVE_JIT {cmake_love_jit} CACHE BOOL "" FORCE)', text, count=1)
         if count != 1:
             raise ValueError(f"Expected to set LOVE_JIT exactly once in {cmake_lists}, replaced {count} times")
         cmake_lists.write_text(text, encoding="utf-8")
