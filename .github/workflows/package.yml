@@ -12,7 +12,7 @@ on:
         required: false
         default: org.love2d.openharmony
       love-package:
-        description: Path to the .love package in this repository. Defaults to game.love.
+        description: Path to the .love package in this repository. Leave empty to build without a bundled game.
         required: false
       product-name:
         description: Base name of generated HAP files
@@ -44,7 +44,7 @@ permissions:
   contents: read
 
 env:
-  LOVE_PACKAGE: ${{ github.event.inputs['love-package'] || 'game.love' }}
+  LOVE_PACKAGE: ${{ github.event.inputs['love-package'] || '' }}
 
 jobs:
   package-openharmony:

@@ -20,9 +20,8 @@ inputs:
     description: Git patch file path for the love-openharmony repo. The patch must apply to love-ref.
     required: false
   love-package:
-    description: LÖVE game package to bundle as rawfile/game.love.
+    description: Optional LÖVE game package to bundle as rawfile/game.love. Leave empty to build without a bundled game.
     required: false
-    default: "game.love"
   resource-path:
     description: Optional path whose contents are copied into entry/src/main/resources.
     required: false
@@ -144,6 +143,7 @@ runs:
         ohpm install --all
 
     - name: Prepare default LÖVE package
+      if: ${{ inputs.love-package != '' }}
       shell: bash
       env:
         LOVE_PACKAGE: ${{ inputs.love-package }}
@@ -207,13 +207,15 @@ runs:
         else:
             raise ValueError(f"love-jit must be true or false: {os.environ['LOVE_JIT']}")
 
-        love_package = Path(os.environ["LOVE_PACKAGE"])
-        if not love_package.is_file():
-            raise FileNotFoundError(f"love-package not found: {love_package}")
-
         rawfile = root / "entry/src/main/resources/rawfile"
         rawfile.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(love_package, rawfile / "game.love")
+
+        love_package_input = os.environ["LOVE_PACKAGE"]
+        if love_package_input:
+            love_package = Path(love_package_input)
+            if not love_package.is_file():
+                raise FileNotFoundError(f"love-package not found: {love_package}")
+            shutil.copy2(love_package, rawfile / "game.love")
 
         resource_path = os.environ.get("RESOURCE_PATH", "")
         if resource_path:
