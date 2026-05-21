@@ -1,0 +1,107 @@
+name: Package OpenHarmony HAP
+
+on:
+  workflow_dispatch:
+    inputs:
+      app-name:
+        description: App display name
+        required: false
+        default: LÖVE for OpenHarmony
+      bundle-id:
+        description: OpenHarmony bundleName
+        required: false
+        default: org.love2d.openharmony
+      love-package:
+        description: Path to the .love package in this repository
+        required: false
+        default: game.love
+      product-name:
+        description: Base name of generated HAP files
+        required: false
+        default: love-openharmony
+      version-string:
+        description: OpenHarmony versionName
+        required: false
+        default: 1.0.0
+      version-code:
+        description: OpenHarmony numeric versionCode
+        required: false
+        default: '1000000'
+      build-mode:
+        description: Hvigor build mode
+        required: false
+        default: debug
+        type: choice
+        options:
+          - debug
+          - release
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  package-openharmony:
+    name: Build OpenHarmony HAP
+    runs-on: ubuntu-latest
+    container: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.0.2.642
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Prepare default LÖVE package
+        shell: python
+        env:
+          LOVE_PACKAGE: ${{ github.event.inputs['love-package'] || 'game.love' }}
+        run: |
+          import os
+          import zipfile
+          from pathlib import Path
+
+          package = Path(os.environ["LOVE_PACKAGE"])
+          if package.is_file():
+              print(f"Using existing LÖVE package: {package}")
+              raise SystemExit(0)
+
+          package.parent.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as archive:
+              archive.writestr(
+                  "main.lua",
+                  "function love.draw()\n"
+                  "  love.graphics.print('LÖVE for OpenHarmony', 32, 32)\n"
+                  "end\n",
+              )
+          print(f"Created default LÖVE package: {package}")
+
+      - name: Build OpenHarmony HAP
+        id: build-hap
+        uses: ./
+        with:
+          app-name: ${{ github.event.inputs['app-name'] || 'LÖVE for OpenHarmony' }}
+          bundle-id: ${{ github.event.inputs['bundle-id'] || 'org.love2d.openharmony' }}
+          love-ref: ${{ github.sha }}
+          love-package: ${{ github.event.inputs['love-package'] || 'game.love' }}
+          product-name: ${{ github.event.inputs['product-name'] || 'love-openharmony' }}
+          version-string: ${{ github.event.inputs['version-string'] || '1.0.0' }}
+          version-code: ${{ github.event.inputs['version-code'] || '1000000' }}
+          build-mode: ${{ github.event.inputs['build-mode'] || 'debug' }}
+          output-folder: ./dist
+          signing-cert-base64: ${{ secrets.OPENHARMONY_SIGNING_CERT_BASE64 }}
+          signing-profile-base64: ${{ secrets.OPENHARMONY_SIGNING_PROFILE_BASE64 }}
+          signing-key-base64: ${{ secrets.OPENHARMONY_SIGNING_KEY_BASE64 }}
+          signing-key-alias: ${{ secrets.OPENHARMONY_SIGNING_KEY_ALIAS || 'ide_demo_app' }}
+          signing-key-password: ${{ secrets.OPENHARMONY_SIGNING_KEY_PASSWORD }}
+          signing-keystore-password: ${{ secrets.OPENHARMONY_SIGNING_KEYSTORE_PASSWORD }}
+
+      - name: Upload HAP artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openharmony-hap
+          path: ${{ steps.build-hap.outputs.package-paths }}
+          if-no-files-found: error
