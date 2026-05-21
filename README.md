@@ -60,9 +60,9 @@ jobs:
 
 ## 自动打包
 
-仓库已内置 `.github/workflows/package.yml` 自动打包流程，会在推送到 `main`、推送 `v*` 标签或手动触发 `workflow_dispatch` 时运行。流程会调用当前仓库的复合 Action 构建 HAP，并通过 `actions/upload-artifact` 上传 `openharmony-hap` 构建产物。
+仓库已内置 `.github/workflows/package.yml` 自动打包流程，会在推送到 `main`、推送 `v*` 标签或手动触发 `workflow_dispatch` 时运行。流程会直接引用当前仓库 `action.yml` 中的复合 Action 构建未签名 HAP，并通过 `actions/upload-artifact` 上传 `openharmony-hap` 构建产物。
 
-手动触发时可以配置应用名称、包名、`.love` 包路径、产物名、版本号和构建模式；如果指定路径下没有 `.love` 文件，流程会生成一个最小默认包用于打包验证。需要签名时，在仓库 Secrets 中配置 `OPENHARMONY_SIGNING_CERT_BASE64`、`OPENHARMONY_SIGNING_PROFILE_BASE64`、`OPENHARMONY_SIGNING_KEY_BASE64`、`OPENHARMONY_SIGNING_KEY_ALIAS`、`OPENHARMONY_SIGNING_KEY_PASSWORD` 和 `OPENHARMONY_SIGNING_KEYSTORE_PASSWORD` 即可。
+手动触发时可以配置应用名称、包名、`.love` 包路径、产物名、版本号和构建模式；如果指定路径下没有 `.love` 文件，流程会生成一个最小默认包用于打包验证。
 
 ## 子模块
 
