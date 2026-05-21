@@ -50,7 +50,7 @@ jobs:
   package-openharmony:
     name: Build OpenHarmony HAP (${{ matrix.jit_name }})
     runs-on: ubuntu-latest
-    container: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.0.2.642
+    container: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:latest
     strategy:
       fail-fast: false
       matrix:
