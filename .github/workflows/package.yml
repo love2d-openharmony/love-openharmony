@@ -57,36 +57,37 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
       - name: Prepare default LÖVE package
         shell: bash
         env:
           LOVE_PACKAGE: ${{ env.LOVE_PACKAGE }}
         run: |
           set -euo pipefail
-          python <<'PY'
-          import os
-          import zipfile
-          from pathlib import Path
+          if [ -f "$LOVE_PACKAGE" ]; then
+            echo "Using existing LÖVE package: $LOVE_PACKAGE"
+            exit 0
+          fi
 
-          package = Path(os.environ["LOVE_PACKAGE"])
-          if package.is_file():
-              print(f"Using existing LÖVE package: {package}")
-          else:
-              package.parent.mkdir(parents=True, exist_ok=True)
-              with zipfile.ZipFile(package, "w", zipfile.ZIP_STORED) as archive:
-                  archive.writestr(
-                      "main.lua",
-                      "function love.draw()\n"
-                      "  love.graphics.print('LÖVE for OpenHarmony', 32, 32)\n"
-                      "end\n",
-                  )
-              print(f"Created default LÖVE package: {package}")
-          PY
+          command -v zip >/dev/null || {
+            echo "zip is required to create the default LÖVE package." >&2
+            exit 1
+          }
+
+          package_dir="$(dirname "$LOVE_PACKAGE")"
+          mkdir -p "$package_dir"
+          package_name="$(basename "$LOVE_PACKAGE")"
+          package_abs="$(cd "$package_dir" && pwd)/$package_name"
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "$tmp_dir"' EXIT
+
+          cat > "$tmp_dir/main.lua" <<'LUA'
+          function love.draw()
+            love.graphics.print('LÖVE for OpenHarmony', 32, 32)
+          end
+          LUA
+
+          (cd "$tmp_dir" && zip -q -0 "$package_abs" main.lua)
+          echo "Created default LÖVE package: $LOVE_PACKAGE"
 
       - name: Build OpenHarmony HAP
         id: build-hap
