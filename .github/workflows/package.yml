@@ -44,15 +44,13 @@ permissions:
   contents: read
 
 env:
-  DEFAULT_LOVE_PACKAGE: game.love
+  LOVE_PACKAGE: ${{ github.event.inputs['love-package'] || 'game.love' }}
 
 jobs:
   package-openharmony:
     name: Build OpenHarmony HAP
     runs-on: ubuntu-latest
     container: ghcr.io/bytemain/harmony-next-pipeline-docker/harmonyos-ci-image:v6.0.2.642
-    env:
-      LOVE_PACKAGE: ${{ github.event.inputs['love-package'] || env.DEFAULT_LOVE_PACKAGE }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
