@@ -73,7 +73,7 @@ jobs:
               print(f"Using existing LÖVE package: {package}")
           else:
               package.parent.mkdir(parents=True, exist_ok=True)
-              with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as archive:
+              with zipfile.ZipFile(package, "w", zipfile.ZIP_STORED) as archive:
                   archive.writestr(
                       "main.lua",
                       "function love.draw()\n"
