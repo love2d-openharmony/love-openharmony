@@ -5,7 +5,7 @@ import { intl } from '@kit.LocalizationKit';
 import { promptAction, ShowDialogSuccessResponse, window } from '@kit.ArkUI';
 import { inputMethod } from '@kit.IMEKit'
 import { pasteboard } from '@kit.BasicServicesKit';
-import { common } from '@kit.AbilityKit';
+import { common, Want } from '@kit.AbilityKit';
 import { batteryInfo } from '@kit.BasicServicesKit';
 import fs from '@ohos.file.fs'
 import audio from '@ohos.multimedia.audio';
@@ -15,6 +15,7 @@ import { display } from '@kit.ArkUI';
 import  { picker, fileShare } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { setSDLLifecycleHandler } from '../SDLLaunchState';
+import { setSDLMainWindowKeepScreenOn } from '../SDLWindowState';
 
 const DOMAIN = 0x0000;
 const LOG_TAG = 'LoveOHOS';
@@ -112,9 +113,27 @@ export class ArkNapiCallback {
     return 1
   }
 
-  openLink(url: string) {
-    let con = context.getHostContext() as common.UIAbilityContext
-    con.openLink(url)
+  async openLink(url: string) {
+    const con = context.getHostContext() as common.UIAbilityContext
+    const want: Want = {
+      action: 'ohos.want.action.viewData',
+      uri: url,
+      entities: ['entity.system.browsable'],
+      parameters: {
+        'ohos.ability.params.showDefaultPicker': true
+      }
+    }
+
+    try {
+      await con.startAbility(want)
+    } catch (error) {
+      const err = error as BusinessError
+      hilog.error(DOMAIN, LOG_TAG, 'Failed to open external url. code=%{public}d message=%{public}s details=%{public}s', err.code ?? -1, err.message ?? '', JSON.stringify(error))
+      try {
+        debugInfo = (debugInfo + `\n[Ark] startAbility(viewData) failed for ${url}: code=${err.code ?? -1} message=${err.message ?? ''} raw=${JSON.stringify(error)}\n`).slice(-12000)
+      } catch (_err) {
+      }
+    }
   }
 
   hasBattery(): number {
@@ -151,6 +170,10 @@ export class ArkNapiCallback {
       }
       return 0
     }
+  }
+
+  keepScreenOn(enabled: number): number {
+    return setSDLMainWindowKeepScreenOn(enabled !== 0) ? 1 : 0
   }
 
   setPasteboardString(text: string) {
@@ -922,7 +945,7 @@ struct Index {
         .id('mainView')
         .width('100%')
         .height('100%')
-        .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM, SafeAreaEdge.START, SafeAreaEdge.END])
+        .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.START, SafeAreaEdge.END])
         .onLoad(() => {
           surfaceReady = true
           launchMainIfReady('surface_onLoad')

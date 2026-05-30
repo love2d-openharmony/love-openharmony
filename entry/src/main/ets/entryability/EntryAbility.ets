@@ -9,6 +9,7 @@ import { KeyboardAvoidMode } from '@ohos.arkui.UIContext';
 import { BusinessError } from '@kit.BasicServicesKit';
 import bundleManager from '@ohos.bundle.bundleManager';
 import { notifySDLBackgroundRequested, notifySDLForegroundRequested } from '../SDLLaunchState';
+import { setSDLMainWindow } from '../SDLWindowState';
 
 const DOMAIN = 0x0000;
 
@@ -55,6 +56,7 @@ export default class EntryAbility extends UIAbility {
 
       windowStage.getMainWindow().then(async (win) => {
         try {
+          setSDLMainWindow(win)
           win.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.OFFSET)
           win.setWindowLayoutFullScreen(true)
         } catch (error) {

@@ -59,7 +59,7 @@ jobs:
 
       - name: Build OpenHarmony HAP
         id: build-hap
-        uses: ./
+        uses: love2d-openharmony/love-actions-openharmony@main
         with:
           app-name: ${{ github.event.inputs['app-name'] || 'LÖVE for OpenHarmony' }}
           bundle-id: ${{ github.event.inputs['bundle-id'] || 'org.love2d.openharmony' }}
